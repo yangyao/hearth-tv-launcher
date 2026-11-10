@@ -121,7 +121,7 @@ public final class KidOverlayController {
         private final StringBuilder input = new StringBuilder();
         private KidGateServer gateServer;   // up only while a GATE card shows and the toggle allows
         private boolean passedAll;
-        private TextView answerLine, messageLine, qrCountdown;
+        private TextView answerLine, messageLine;
         private ImageView qrView;
         private Runnable onConfirm;
 
@@ -152,6 +152,9 @@ public final class KidOverlayController {
 
         private void render() {
             removeAllViews();
+            answerLine = null;
+            messageLine = null;
+            qrView = null;
             LinearLayout panel = new LinearLayout(getContext());
             panel.setOrientation(LinearLayout.VERTICAL);
             panel.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -225,45 +228,37 @@ public final class KidOverlayController {
         }
 
         private void gateContent(LinearLayout panel) {
-            KidQuiz.Question q = KidSession.get(getContext()).gateQuestion();
+            KidSession session = KidSession.get(getContext());
             panel.addView(text(getContext(), "家长验证", 26, 0xFFE4E8EB, dp(4)));
-            panel.addView(text(getContext(), "请家长计算，孩子不用试啦", 15, 0xFF8D9BA7, dp(2)));
 
+            boolean qr = gateServer != null && gateServer.running() && gateServer.url() != null;
+            if (qr) {
+                // QR-only card: the question lives on the phone page, nothing to read or type here.
+                panel.addView(text(getContext(), "请家长用手机扫码作答", 16, 0xFF8D9BA7, dp(10)));
+                qrView = new ImageView(getContext());
+                qrView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                qrView.setPadding(dp(8), dp(8), dp(8), dp(8));
+                qrView.setBackground(rounded(0xFFFFFFFF, dp(10)));
+                rebuildQr(dp(154));
+                panel.addView(qrView, new LinearLayout.LayoutParams(dp(170), dp(170)));
+                messageLine = text(getContext(), "", 14, 0xFF53616B, dp(12));
+                panel.addView(messageLine);
+                return;
+            }
+
+            // No QR (toggle off, or the TV has no LAN): the question with the remote keypad.
+            panel.addView(text(getContext(), "请家长计算，孩子不用试啦", 15, 0xFF8D9BA7, dp(2)));
             LinearLayout left = new LinearLayout(getContext());
             left.setOrientation(LinearLayout.VERTICAL);
             left.setGravity(Gravity.CENTER_HORIZONTAL);
+            KidQuiz.Question q = session.gateQuestion();
             left.addView(text(getContext(), q.text + " = ?", 38, 0xFFFFFFFF, dp(16)));
             answerLine = text(getContext(), "＝ " + input, 30, 0xFF9AD6A8, dp(6));
             left.addView(answerLine);
             messageLine = text(getContext(), "", 15, 0xFF8D9BA7, dp(2));
             left.addView(messageLine);
             left.addView(keypad(this::submitGate));
-
-            boolean qr = gateServer != null && gateServer.running() && gateServer.url() != null;
-            if (qr) {
-                // The phone path: scan, answer on the phone's own keyboard; the TV checks, always.
-                LinearLayout side = new LinearLayout(getContext());
-                side.setOrientation(LinearLayout.VERTICAL);
-                side.setGravity(Gravity.CENTER_HORIZONTAL);
-                side.setPadding(dp(30), 0, 0, 0);
-                qrView = new ImageView(getContext());
-                qrView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                qrView.setPadding(dp(6), dp(6), dp(6), dp(6));
-                qrView.setBackground(rounded(0xFFFFFFFF, dp(8)));
-                rebuildQr();
-                side.addView(qrView, new LinearLayout.LayoutParams(dp(150), dp(150)));
-                side.addView(text(getContext(), "手机扫码作答", 15, 0xFF8D9BA7, dp(10)));
-                qrCountdown = text(getContext(), "", 13, 0xFF53616B, dp(0));
-                side.addView(qrCountdown);
-                LinearLayout cols = new LinearLayout(getContext());
-                cols.setOrientation(LinearLayout.HORIZONTAL);
-                cols.setGravity(Gravity.CENTER_VERTICAL);
-                cols.addView(left);
-                cols.addView(side);
-                panel.addView(cols);
-            } else {
-                panel.addView(left);
-            }
+            panel.addView(left);
         }
 
         private void optionsContent(LinearLayout panel) {
@@ -301,7 +296,7 @@ public final class KidOverlayController {
             // COOLDOWN: the tick below is already counting the wait down.
         }
 
-        /** The gate's resident ½ s tick: the cooldown line, the QR's validity and its countdown. */
+        /** The gate's resident ½ s tick: cooldown countdown on the keypad card, QR validity on the QR one. */
         private final Runnable gateTick = new Runnable() {
             @Override public void run() {
                 if (!GATE.equals(mode)) return;
@@ -313,30 +308,29 @@ public final class KidOverlayController {
                                 ? String.format(Locale.US, "答案不正确；请等 %d 分 %02d 秒后再试", left / 60, left % 60)
                                 : String.format(Locale.US, "答案不正确；请等 %d 秒后再试", left));
                         messageLine.setTextColor(0xFFE57373);
-                    } else if (messageLine.length() > 0) {
-                        messageLine.setText("");   // the wait is over, back to a plain card
-                    }
-                }
-                if (gateServer != null && gateServer.running()) {
-                    long left = gateServer.tokenExpiresIn();
-                    if (qrCountdown != null)
-                        qrCountdown.setText(left > 0
+                    } else if (gateServer != null && gateServer.running()) {
+                        long left = gateServer.tokenExpiresIn();
+                        messageLine.setText(left > 0
                                 ? String.format(Locale.US, "二维码 %d:%02d 内有效，过期自动刷新", left / 60000, left / 1000 % 60)
                                 : "正在刷新二维码…");
-                    if (left <= 0) {
-                        gateServer.rotateToken();
-                        rebuildQr();
+                        messageLine.setTextColor(0xFF53616B);
+                    } else if (messageLine.length() > 0) {
+                        messageLine.setText("");
                     }
+                }
+                if (gateServer != null && gateServer.running() && gateServer.tokenExpiresIn() <= 0) {
+                    gateServer.rotateToken();
+                    rebuildQr(dp(154));
                 }
                 handler.postDelayed(this, 500);
             }
         };
 
-        private void rebuildQr() {
+        private void rebuildQr(int aboutPx) {
             if (gateServer == null || qrView == null) return;
             String url = gateServer.url();
             if (url == null) return;
-            qrView.setImageBitmap(KidGateServer.qrBitmap(url, dp(150)));
+            qrView.setImageBitmap(KidGateServer.qrBitmap(url, aboutPx));
         }
 
         // ---- keys ---------------------------------------------------------------------------------
