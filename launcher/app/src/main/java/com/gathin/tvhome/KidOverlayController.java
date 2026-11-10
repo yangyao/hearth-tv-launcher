@@ -140,11 +140,6 @@ public final class KidOverlayController {
             KidModeSettings cfg = KidModeSettings.load(getContext());
             if (QUIZ.equals(mode) && questions == null)
                 questions = KidQuiz.generate(new Random(), cfg.grade, cfg.questions);
-            if (GATE.equals(mode)) {
-                KidSession session = KidSession.get(getContext());
-                gateServer = cfg.qrAnswer ? session.ensureGateServer() : null;
-                session.setGateUi(this);   // the phone's answers re-render / close this card
-            }
             input.setLength(0);
             passedAll = false;
             render();
@@ -177,7 +172,7 @@ public final class KidOverlayController {
             else if (passedAll) doneContent(panel);
             else quizContent(panel);
             handler.removeCallbacks(gateTick);
-            if (GATE.equals(mode)) handler.postDelayed(gateTick, 500);   // cooldown line + QR validity
+            if (GATE.equals(mode) || qrView != null) handler.postDelayed(gateTick, 500);   // cooldown line + QR validity
         }
 
         // ---- the four cards ----------------------------------------------------------------------
@@ -229,6 +224,15 @@ public final class KidOverlayController {
             KidModeSettings cfg = KidModeSettings.load(getContext());
             panel.addView(text(getContext(), "今天的时间用完了", 26, 0xFFE4E8EB, dp(4)));
             panel.addView(text(getContext(), "每天可用 " + cfg.dailyCapMinutes + " 分钟，现在该休息了。", 17, 0xFF8D9BA7, dp(2)));
+            if (cfg.qrAnswer) {
+                // The QR right on the lock card: the parent scans, answers on the phone, done —
+                // no button stands between them and the answer.
+                ensureQrGate();
+                if (gateServer != null && gateServer.running() && gateServer.url() != null) {
+                    qrBlock(panel);
+                    return;
+                }
+            }
             panel.addView(text(getContext(), "想关掉儿童模式，请家长验证。", 15, 0xFF8D9BA7, dp(2)));
             panel.addView(bigButton(getContext(), "家长验证", () -> swap(GATE), dp(18)));
         }
@@ -237,18 +241,10 @@ public final class KidOverlayController {
             KidSession session = KidSession.get(getContext());
             panel.addView(text(getContext(), "家长验证", 26, 0xFFE4E8EB, dp(4)));
 
-            boolean qr = gateServer != null && gateServer.running() && gateServer.url() != null;
-            if (qr) {
+            ensureQrGate();
+            if (gateServer != null && gateServer.running() && gateServer.url() != null) {
                 // QR-only card: the question lives on the phone page, nothing to read or type here.
-                panel.addView(text(getContext(), "请家长用手机扫码作答", 16, 0xFF8D9BA7, dp(10)));
-                qrView = new ImageView(getContext());
-                qrView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                qrView.setPadding(dp(8), dp(8), dp(8), dp(8));
-                qrView.setBackground(rounded(0xFFFFFFFF, dp(10)));
-                rebuildQr(dp(154));
-                panel.addView(qrView, new LinearLayout.LayoutParams(dp(170), dp(170)));
-                messageLine = text(getContext(), "", 14, 0xFF53616B, dp(12));
-                panel.addView(messageLine);
+                qrBlock(panel);
                 return;
             }
 
@@ -264,6 +260,27 @@ public final class KidOverlayController {
             messageLine = text(getContext(), "", 15, 0xFF8D9BA7, dp(2));
             words.addView(messageLine);
             panel.addView(sideBySide(words, keypad(this::submitGate)));
+        }
+
+        /** Brings the LAN gate server up and points the gate UI here, so the phone can answer this card. */
+        private void ensureQrGate() {
+            KidSession session = KidSession.get(getContext());
+            KidModeSettings cfg = KidModeSettings.load(getContext());
+            gateServer = cfg.qrAnswer ? session.ensureGateServer() : null;
+            session.setGateUi(this);
+        }
+
+        /** The scan-to-answer tile: a white rounded QR with a status line under it. */
+        private void qrBlock(LinearLayout panel) {
+            panel.addView(text(getContext(), "请家长用手机扫码作答", 16, 0xFF8D9BA7, dp(10)));
+            qrView = new ImageView(getContext());
+            qrView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            qrView.setPadding(dp(8), dp(8), dp(8), dp(8));
+            qrView.setBackground(rounded(0xFFFFFFFF, dp(10)));
+            rebuildQr(dp(154));
+            panel.addView(qrView, new LinearLayout.LayoutParams(dp(170), dp(170)));
+            messageLine = text(getContext(), "", 14, 0xFF53616B, dp(12));
+            panel.addView(messageLine);
         }
 
         /** The quiz card's quiet way in for a parent; the dropdown's close entry lands on GATE directly. */
@@ -299,7 +316,7 @@ public final class KidOverlayController {
         /** The gate's resident ½ s tick: cooldown countdown on the keypad card, QR validity on the QR one. */
         private final Runnable gateTick = new Runnable() {
             @Override public void run() {
-                if (!GATE.equals(mode)) return;
+                if (!GATE.equals(mode) && !(LOCK.equals(mode) && qrView != null)) return;
                 long cd = KidSession.get(getContext()).gateCooldownUntil() - System.currentTimeMillis();
                 if (messageLine != null) {
                     if (cd > 0) {
