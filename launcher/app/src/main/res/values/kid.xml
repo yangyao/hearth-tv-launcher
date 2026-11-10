@@ -7,4 +7,7 @@
     <string name="kids_mode_enabled_toast">儿童模式已开启：回到桌面即生效</string>
     <string name="kids_mode_quiz_toast">休息时间到，请回到桌面完成答题</string>
     <string name="kids_mode_locked_toast">今天的时间用完了，想再看请家长验证</string>
+    <string name="kids_time_left_min">今天还能看 %1$d 分钟</string>
+    <string name="kids_time_unlimited">今天不限时，随便看</string>
+    <string name="kids_time_used_up">今天的时间用完了</string>
 </resources>

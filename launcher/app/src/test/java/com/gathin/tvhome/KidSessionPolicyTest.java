@@ -98,6 +98,19 @@ public class KidSessionPolicyTest {
         assertEquals(0, p.quizLevel());
     }
 
+    @Test public void secondsLeftTodayCountsDownAndUnlimitedIsMinusOne() {
+        KidSessionPolicy unlimited = new KidSessionPolicy(600, 0);
+        assertEquals(-1, unlimited.secondsLeftToday());   // 0 = no cap, nothing to count down to
+        KidSessionPolicy p = new KidSessionPolicy(600, 1200);
+        assertEquals(1200, p.secondsLeftToday());
+        p.setWatching(true);
+        p.tick(500);
+        assertEquals(700, p.secondsLeftToday());
+        p.tick(700);                               // past the cap: locked, nothing left
+        assertEquals(0, p.secondsLeftToday());
+        assertEquals(KidSessionPolicy.Phase.LOCKED, p.phase());
+    }
+
     @Test public void persistedStateRestores() {
         KidSessionPolicy p = new KidSessionPolicy(600, 3600);
         p.restore(700, 1, false, false);    // reboot mid-way through the second session

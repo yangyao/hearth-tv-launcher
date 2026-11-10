@@ -79,6 +79,11 @@ public final class KidSessionPolicy {
     public boolean pendingQuiz() { return pendingQuiz; }
     public boolean lockedToday() { return lockedToday; }
 
+    /** Seconds until the daily cap, -1 when the cap is unlimited; frozen while a layer is up (not watching). */
+    public int secondsLeftToday() {
+        return capSeconds > 0 ? Math.max(0, capSeconds - watchedSeconds) : -1;
+    }
+
     private void recheck() {
         if (capSeconds > 0 && watchedSeconds >= capSeconds) {
             lockedToday = true;

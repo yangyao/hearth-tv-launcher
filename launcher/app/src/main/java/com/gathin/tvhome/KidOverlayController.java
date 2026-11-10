@@ -182,6 +182,9 @@ public final class KidOverlayController {
             KidQuiz.Question q = questions.get(qIndex);
             panel.addView(text(getContext(), "休息时间", 26, 0xFFE4E8EB, dp(4)));
             panel.addView(text(getContext(), "第 " + (qIndex + 1) + " / " + questions.size() + " 题 · 答对就能继续看", 15, 0xFF8D9BA7, dp(2)));
+            int left = KidSession.get(getContext()).secondsLeftToday();
+            if (left >= 0)   // a daily cap exists: the child sees how much of the day is left
+                panel.addView(text(getContext(), "今天还能看 " + Math.max(1, (left + 59) / 60) + " 分钟", 13, 0xFF53616B, dp(2)));
             TextView question = text(getContext(), q.text + " = ?", 40, 0xFFFFFFFF, dp(16));
             panel.addView(question);
             answerLine = text(getContext(), "＝ " + input, 30, 0xFF9AD6A8, dp(6));

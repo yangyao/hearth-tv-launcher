@@ -40,6 +40,7 @@ public final class KidSession {
     private KidQuiz.Question gateQuestion;
     private KidGateServer gateServer;
     private GateUi gateUi;
+    private Runnable homeListener;
     private final Runnable ticker = this::tick;
 
     static synchronized KidSession get(Context c) {
@@ -109,10 +110,28 @@ public final class KidSession {
         int delta = (int) Math.min(600, (now - lastUptime) / 1000);
         lastUptime = now;
         policy.setWatching(policy.isWatching() && interactive());
+        int leftBefore = policy.secondsLeftToday();
         policy.tick(delta);
+        int leftAfter = policy.secondsLeftToday();
         persist();
+        warnLowTime(leftBefore, leftAfter);
         react();
         handler.postDelayed(ticker, TICK_MS);
+    }
+
+    /**
+     * Watching into the last stretch of the day: the child should see it coming even inside an app.
+     * One toast per threshold (60/30/10/5/1 min left), each reached at most once a day because the
+     * remaining time only ever goes down while watching.
+     */
+    private void warnLowTime(int before, int after) {
+        if (before < 0 || after >= before) return;   // no cap, or nothing elapsed this tick
+        for (int t : new int[]{3600, 1800, 600, 300, 60}) {
+            if (before > t && after <= t) {
+                Toast.makeText(app, app.getString(R.string.kids_time_left_min, Math.max(1, (after + 59) / 60)), Toast.LENGTH_LONG).show();
+                return;
+            }
+        }
     }
 
     /** Front-window tracking from HomeKeyService (activity windows only, as with app_keys "front:"). */
@@ -263,6 +282,9 @@ public final class KidSession {
         return GateResult.OK;
     }
 
+    /** Seconds until the daily cap (-1 unlimited), for passive displays like the Home chip. */
+    public synchronized int secondsLeftToday() { return policy.secondsLeftToday(); }
+
     /** The LAN server for phone answering (opt-in), alive only while a gate card is up. */
     public synchronized KidGateServer ensureGateServer() {
         if (gateServer == null) gateServer = new KidGateServer(this);
@@ -330,7 +352,11 @@ public final class KidSession {
                 .putBoolean("pending_quiz", policy.pendingQuiz())
                 .putBoolean("locked_today", policy.lockedToday())
                 .commit();
+        if (homeListener != null) homeListener.run();   // persist is main-thread only, so this may touch views
     }
+
+    /** A passive display (the Home chip) that follows the counters; cleared by the activity on destroy. */
+    public void setHomeListener(Runnable listener) { homeListener = listener; }
 
     /** Shows the layer for the current state, without rebuilding one that is already up. */
     private boolean react() {

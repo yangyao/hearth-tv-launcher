@@ -287,6 +287,22 @@
                             android:letterSpacing="0.14"
                             android:textAllCaps="true"
                             android:visibility="gone" />
+
+                        <!-- Kids mode: today's remaining watch time, so the child can see it coming;
+                             visible only while kids mode is on (updateKidTimeLeft). -->
+                        <TextView
+                            android:id="@+id/kidTimeLeft"
+                            android:gravity="left"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:singleLine="true"
+                            android:ellipsize="end"
+                            android:textColor="#A6FFFFFF"
+                            android:textSize="14sp"
+                            android:fontFamily="@string/font_regular"
+                            android:letterSpacing="0.14"
+                            android:visibility="gone" />
                     </LinearLayout>
                 </LinearLayout>
 

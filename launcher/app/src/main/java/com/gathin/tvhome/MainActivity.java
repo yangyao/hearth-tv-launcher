@@ -180,6 +180,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean animations;
     private boolean advancedEffects;
     private TextView greeting;
+    private TextView kidTimeLeft;
     private View clockBlock;
     private View btnInputs;
     /** config show_inputs_pill: false keeps the Inputs pill hidden even when the TV has inputs. */
@@ -480,6 +481,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (!cfg.dockTitle) hero.setVisibility(View.GONE);
         greeting = findViewById(R.id.greeting);
         clockBlock = findViewById(R.id.leftBlock);
+        kidTimeLeft = findViewById(R.id.kidTimeLeft);
+        KidSession.get(this).setHomeListener(this::updateKidTimeLeft);
         greetingColor = greeting.getCurrentTextColor();
         if (!cfg.showGreeting) greeting.setVisibility(View.GONE);
         if (cfg.headerWhite) {
@@ -1001,6 +1004,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Kids mode: Home being back means not-watching; also settles the fallback tail and, degraded,
         // puts the quiz or lock back up.
         KidSession.get(this).onHomeResumed();
+        updateKidTimeLeft();
         // The network and Inputs pills keep their state while Home is in the background, and callbacks update them
         // when the network or the inputs change, so this refresh only catches anything missed. Its binder calls
         // (about 7 ms on a TCL C755, most of it WifiManager.getConnectionInfo) would hold up the first frame back
@@ -1262,6 +1266,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        KidSession.get(this).setHomeListener(null);
         unregisterReceiver(packageReceiver);
         nasPhotos.close();
         wallpaperPlayer.close();
@@ -2533,6 +2538,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             handler.postDelayed(clockCheck, 1_000L);
         }
+    }
+
+    /** The kids chip next to the date: today's remaining watch time, so the child can see it coming. */
+    private void updateKidTimeLeft() {
+        if (kidTimeLeft == null) return;
+        boolean on = KidModeSettings.load(this).enabled;
+        kidTimeLeft.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (!on) return;
+        int left = KidSession.get(this).secondsLeftToday();
+        kidTimeLeft.setText(left == 0 ? getString(R.string.kids_time_used_up)
+                : left < 0 ? getString(R.string.kids_time_unlimited)
+                : getString(R.string.kids_time_left_min, (left + 59) / 60));
     }
 
     private void updateGreeting() {
