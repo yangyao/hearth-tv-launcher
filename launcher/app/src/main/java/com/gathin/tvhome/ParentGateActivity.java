@@ -27,10 +27,20 @@ public class ParentGateActivity extends Activity implements KidOverlayController
         super.onCreate(state);
         String mode = getIntent().getStringExtra(EXTRA_MODE);
         if (mode == null) mode = KidSession.get(this).shieldMode();
+        // Same leanback fullscreen conventions as the other settings pages, so the window spans the
+        // whole TV panel and the cards size against it.
+        getWindow().getDecorView().setSystemUiVisibility(5894);
+        KidSession.get(this).shieldActivity(true);   // the in-Home shield owns the layer while open
         shield = KidOverlayController.buildShield(this, this);
         setContentView(shield);
         shield.swap(mode);
         shield.requestFocus();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        KidSession.get(this).shieldActivity(false);
     }
 
     @Override

@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.List;
@@ -159,7 +160,15 @@ public final class KidOverlayController {
             panel.setBackground(rounded(0xFF1A242C, dp(18)));
             FrameLayout wrapper = new FrameLayout(getContext());
             wrapper.addView(panel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-            addView(wrapper, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            // The gate card with its keypad is taller than some TV panels: a plainly centered layout
+            // would clip the bottom keypad row off the screen. A fill-viewport ScrollView centers
+            // whatever fits and scrolls the rest, and D-pad focus moves keep every key reachable.
+            ScrollView scroll = new ScrollView(getContext());
+            scroll.setFillViewport(true);
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            scroll.addView(wrapper, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             if (OPTIONS.equals(mode)) optionsContent(panel);
             else if (LOCK.equals(mode)) lockContent(panel);
             else if (GATE.equals(mode)) gateContent(panel);

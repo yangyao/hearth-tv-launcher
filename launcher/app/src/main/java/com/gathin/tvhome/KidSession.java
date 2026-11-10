@@ -31,6 +31,7 @@ public final class KidSession {
     private KidSessionPolicy policy;
     private long lastUptime;
     private boolean tickArmed;
+    private boolean shieldUp;
     private long lastToastAt;
     private final Runnable ticker = this::tick;
 
@@ -190,6 +191,17 @@ public final class KidSession {
         return KidOverlayController.GATE;
     }
 
+    /**
+     * ParentGateActivity lives and dies by this: while it shows the cards in-Home, the overlay stands
+     * down (the two would otherwise stack, the overlay covering the very gate the parent is on). When
+     * it leaves, the state is re-evaluated, so a pending quiz or lock comes back on its own.
+     */
+    public void shieldActivity(boolean up) {
+        shieldUp = up;
+        if (up) KidOverlayController.dismiss();
+        else react();
+    }
+
     // ---- internals -----------------------------------------------------------------------------------
 
     private void applyConfig() {
@@ -237,6 +249,7 @@ public final class KidSession {
             KidOverlayController.dismiss();
             return false;
         }
+        if (shieldUp) { KidOverlayController.dismiss(); return true; }   // the in-Home shield is the active surface
         if (!interactive()) return KidOverlayController.showing();   // screen off: the layer keeps waiting
         String up = KidOverlayController.currentMode();
         if (policy.lockedToday()) {
