@@ -137,11 +137,17 @@ public final class KidGateServer {
         }
     }
 
-    /** One request: read the head (+ a small body), route it, answer, close. Anything odd → 404. */
+    /** One request: read the head, then the body it declares, route it, answer, close. Anything odd → 404. */
     private void handle(Socket sock) throws IOException {
         InputStream in = sock.getInputStream();
         byte[] head = readUpTo(in, HEAD_CAP, true);
-        Request req = Request.parse(head);
+        Request probe = Request.parse(head, new byte[0]);
+        if (probe == null) {
+            respond(sock, 404, page("打不开", "请求有误，请回到电视重新扫码。"));
+            return;
+        }
+        byte[] body = readUpTo(in, probe.contentLength(), false);
+        Request req = Request.parse(head, body);
         if (req == null) {
             respond(sock, 404, page("打不开", "请求有误，请回到电视重新扫码。"));
             return;
@@ -269,29 +275,33 @@ public final class KidGateServer {
             return null;
         }
 
-        /** Lines up to the blank line, then Content-Length bytes of body; null when oversized/malformed. */
-        static Request parse(byte[] raw) {
-            String text = new String(raw, StandardCharsets.ISO_8859_1);
-            int headEnd = text.indexOf("\r\n\r\n");
-            if (headEnd < 0) return null;
-            String head = text.substring(0, headEnd);
+        /** Content-Length from the head, capped at BODY_CAP; 0 when absent or malformed. */
+        int contentLength() {
+            for (String line : head.split("\r\n")) {
+                if (line.toLowerCase(Locale.US).startsWith("content-length:")) {
+                    try {
+                        return Math.max(0, Math.min(BODY_CAP, Integer.parseInt(line.substring(15).trim())));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            return 0;
+        }
+
+        /**
+         * The head as read (ending at the blank line) plus the body bytes that followed it, which
+         * the caller read per the head's Content-Length. Null when the head is not a request.
+         */
+        static Request parse(byte[] headBytes, byte[] bodyBytes) {
+            String head = new String(headBytes, StandardCharsets.ISO_8859_1);
+            if (!head.endsWith("\r\n\r\n")) return null;
+            head = head.substring(0, head.length() - 4);
             String[] lines = head.split("\r\n");
             if (lines.length == 0) return null;
             String[] first = lines[0].split(" ");
             if (first.length < 2) return null;
             String path = first[1].contains("?") ? first[1].substring(0, first[1].indexOf('?')) : first[1];
-            int length = 0;
-            for (String line : lines) {
-                if (line.toLowerCase(Locale.US).startsWith("content-length:")) {
-                    try {
-                        length = Math.min(BODY_CAP, Integer.parseInt(line.substring(15).trim()));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
-            String body = length > 0 && headEnd + 4 + length <= text.length()
-                    ? text.substring(headEnd + 4, headEnd + 4 + length) : "";
-            return new Request(first[0], path, head, body);
+            return new Request(first[0], path, head, new String(bodyBytes, StandardCharsets.ISO_8859_1));
         }
     }
 
