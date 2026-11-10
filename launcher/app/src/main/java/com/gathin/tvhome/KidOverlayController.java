@@ -112,7 +112,7 @@ public final class KidOverlayController {
      * The card surface itself. Keys: Back is swallowed (the gate hands it to the host), Menu and
      * Settings die here, number keys type into the answer, the rest reaches the focused keypad key.
      */
-    public static final class Shield extends FrameLayout {
+    public static final class Shield extends FrameLayout implements KidSession.GateUi {
         private final Host host;
         private final Handler handler = new Handler(Looper.getMainLooper());
         private String mode;
@@ -142,7 +142,7 @@ public final class KidOverlayController {
             if (GATE.equals(mode)) {
                 KidSession session = KidSession.get(getContext());
                 gateServer = cfg.qrAnswer ? session.ensureGateServer() : null;
-                session.setGateUi(this::onGateAnswered);   // the phone answers re-render this card
+                session.setGateUi(this);   // the phone's answers and choice re-render / close this card
             }
             if (OPTIONS.equals(mode)) KidSession.get(getContext()).clearGate();
             input.setLength(0);
@@ -286,7 +286,7 @@ public final class KidOverlayController {
         }
 
         /** A gate answer landed (TV keypad or phone): OK flips to the options, else a fresh question. */
-        private void onGateAnswered(KidSession.GateResult result) {
+        @Override public void onGateAnswered(KidSession.GateResult result) {
             if (result == KidSession.GateResult.OK) {
                 swap(OPTIONS);
             } else if (result == KidSession.GateResult.WRONG) {
@@ -295,6 +295,9 @@ public final class KidOverlayController {
             }
             // COOLDOWN: the tick below is already counting the wait down.
         }
+
+        /** The choice was made on the phone: the in-Home activity closes, the overlay host ignores it. */
+        @Override public void onGateClosed() { host.onGateAbandon(); }
 
         /** The gate's resident ½ s tick: cooldown countdown on the keypad card, QR validity on the QR one. */
         private final Runnable gateTick = new Runnable() {
@@ -449,8 +452,9 @@ public final class KidOverlayController {
 
     private static TextView bigButton(Context c, String label, Runnable action, int vPad) {
         TextView t = button(c, label, action);
-        t.setPadding(0, vPad, 0, vPad);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.round(280 * c.getResources().getDisplayMetrics().density), Math.round(56 * c.getResources().getDisplayMetrics().density));
+        // Fixed height, no vertical padding: the 18dp paddings inside the 56dp height left a 20dp
+        // content box for a ~23dp line of text, clipping the label's bottom. Gravity centers instead.
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Math.round(280 * c.getResources().getDisplayMetrics().density), Math.round(60 * c.getResources().getDisplayMetrics().density));
         lp.topMargin = vPad;
         t.setLayoutParams(lp);
         return t;

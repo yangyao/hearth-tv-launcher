@@ -179,11 +179,13 @@ public final class KidSession {
         persist();
         KidOverlayController.dismiss();
         react();
+        notifyGateClosed();
     }
 
     public void onCloseMode() {
         KidModeSettings.setEnabled(app, false);
         KidOverlayController.dismiss();
+        notifyGateClosed();
     }
 
     public void clearGate() {
@@ -215,7 +217,11 @@ public final class KidSession {
     public enum GateResult { OK, WRONG, COOLDOWN }
 
     /** The visible gate card listens while it is up; a phone answer re-renders it on the main thread. */
-    public interface GateUi { void onGateAnswered(GateResult result); }
+    public interface GateUi {
+        void onGateAnswered(GateResult result);
+        /** The choice (unlock/close) was made on the phone: close the card surface. */
+        void onGateClosed();
+    }
 
     /** The current gate question; made on first ask and rotated after every wrong answer. */
     public synchronized KidQuiz.Question gateQuestion() {
@@ -281,6 +287,20 @@ public final class KidSession {
         GateUi ui = gateUi;
         if (ui != null) handler.post(() -> ui.onGateAnswered(result));
     }
+
+    /** Called with the card on the main thread (see the async wrappers), so it may touch views. */
+    private void notifyGateClosed() {
+        GateUi ui = gateUi;
+        if (ui != null) ui.onGateClosed();
+    }
+
+    /**
+     * The phone made the choice: the LAN server thread must never touch views, so the session work
+     * (which dismisses the overlay) runs on the main thread instead.
+     */
+    public void unlockTodayAsync() { handler.post(this::onUnlockToday); }
+
+    public void closeModeAsync() { handler.post(this::onCloseMode); }
 
     // ---- internals -----------------------------------------------------------------------------------
 
