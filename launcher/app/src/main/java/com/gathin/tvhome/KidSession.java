@@ -354,12 +354,12 @@ public final class KidSession {
         String up = KidOverlayController.currentMode();
         if (policy.lockedToday()) {
             if (KidOverlayController.LOCK.equals(up) || KidOverlayController.GATE.equals(up)
-                    || KidOverlayController.OPTIONS.equals(up)) return true;
+                    || KidOverlayController.OPTIONS.equals(up) || KidOverlayController.PASSED.equals(up)) return true;
             return showLayer(KidOverlayController.LOCK);
         }
         if (policy.pendingQuiz()) {
             if (KidOverlayController.QUIZ.equals(up) || KidOverlayController.GATE.equals(up)
-                    || KidOverlayController.OPTIONS.equals(up)) return true;
+                    || KidOverlayController.OPTIONS.equals(up) || KidOverlayController.PASSED.equals(up)) return true;
             return showLayer(KidOverlayController.QUIZ);
         }
         KidOverlayController.dismiss();

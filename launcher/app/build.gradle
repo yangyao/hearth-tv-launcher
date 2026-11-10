@@ -12,7 +12,7 @@ android {
         minSdk 26
         targetSdk 34
         versionCode 16
-        versionName '3.2-kids.8'
+        versionName '3.2-kids.9'
     }
 
     buildTypes {

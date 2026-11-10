@@ -29,7 +29,7 @@ import java.util.Random;
  */
 public final class KidOverlayController {
 
-    public static final String QUIZ = "quiz", LOCK = "lock", GATE = "gate", OPTIONS = "options";
+    public static final String QUIZ = "quiz", LOCK = "lock", GATE = "gate", OPTIONS = "options", PASSED = "passed";
 
     /** What the cards call back into; the overlay and the in-Home activity wire it to KidSession. */
     public interface Host {
@@ -174,6 +174,7 @@ public final class KidOverlayController {
             if (OPTIONS.equals(mode)) optionsContent(panel);
             else if (LOCK.equals(mode)) lockContent(panel);
             else if (GATE.equals(mode)) gateContent(panel);
+            else if (PASSED.equals(mode)) passedContent(panel);
             else if (passedAll) doneContent(panel);
             else quizContent(panel);
             handler.removeCallbacks(gateTick);
@@ -268,6 +269,16 @@ public final class KidOverlayController {
             panel.addView(bigButton(getContext(), "关闭儿童模式", () -> host.onCloseMode(), dp(18)));
         }
 
+        /**
+         * The QR path's after-pass card: passive on purpose — the choice happens on the phone where
+         * the QR was answered, and this card just follows (it goes away when the choice lands).
+         */
+        private void passedContent(LinearLayout panel) {
+            panel.addView(text(getContext(), "验证通过", 30, 0xFF9AD6A8, dp(6)));
+            panel.addView(text(getContext(), "请在手机上选择下一步", 17, 0xFF8D9BA7, dp(10)));
+            panel.addView(text(getContext(), "电视会跟着手机的操作自动变化", 13, 0xFF53616B, dp(4)));
+        }
+
         /** The quiz card's quiet way in for a parent; the dropdown's close entry lands on GATE directly. */
         private void parentEntry(LinearLayout panel) {
             TextView entry = text(getContext(), "家长入口", 13, 0xFF53616B, dp(0));
@@ -285,11 +296,16 @@ public final class KidOverlayController {
             KidSession.get(getContext()).submitGateAnswer(input.toString());
         }
 
-        /** A gate answer landed (TV keypad or phone): OK flips to the options, else a fresh question. */
+        /** A gate answer landed (TV keypad or phone): choose where the choice happens. */
         @Override public void onGateAnswered(KidSession.GateResult result) {
             if (result == KidSession.GateResult.OK) {
-                swap(OPTIONS);
-            } else if (result == KidSession.GateResult.WRONG) {
+                // QR mode: the phone chose to answer, so the phone also chooses what's next; the
+                // keypad path has no phone, so the choice buttons stay here on the TV.
+                boolean qr = gateServer != null && gateServer.running();
+                swap(qr ? PASSED : OPTIONS);
+                return;
+            }
+            if (result == KidSession.GateResult.WRONG) {
                 input.setLength(0);
                 render();
             }
@@ -343,8 +359,10 @@ public final class KidOverlayController {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 switch (event.getKeyCode()) {
                     case KeyEvent.KEYCODE_BACK:
-                        if (GATE.equals(mode)) host.onGateAbandon();
-                        return true;   // quiz and lock: nothing gets past the layer
+                        // Gate and passed: the parent may change their mind (the quiz/lock returns);
+                        // quiz and lock: nothing gets past the layer.
+                        if (GATE.equals(mode) || PASSED.equals(mode)) host.onGateAbandon();
+                        return true;
                     case KeyEvent.KEYCODE_MENU:
                     case KeyEvent.KEYCODE_SETTINGS:
                     case KeyEvent.KEYCODE_ALL_APPS:
