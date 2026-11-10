@@ -42,14 +42,18 @@ public final class KidQuiz {
         return out;
     }
 
-    /** The parent gate: 1–2 step two-digit, 2 three-step three-digit, 3 four-step with parentheses. */
+    /**
+     * The parent gate: grade-1/2 math on purpose — a speed bump for a child, not an exam for the
+     * parent. The difficulty levels only add steps inside small numbers: 1 is one step within 20,
+     * 2 is the multiplication table plus one step within 100, 3 is three small steps within 100.
+     */
     public static Question gate(Random random, int difficulty) {
         int d = Math.max(1, Math.min(3, difficulty));
         for (int attempt = 0; attempt < 40; attempt++) {
             Question q = gateOnce(random, d);
             if (q != null) return q;
         }
-        return new Question("23×4+158−67", 183);   // unreachable in practice
+        return new Question("7×8+15", 71);   // unreachable in practice
     }
 
     /** Upper bound on every answer a grade can produce (unit tests). */
@@ -147,24 +151,12 @@ public final class KidQuiz {
     }
 
     private static Question gateOnce(Random r, int d) {
-        if (d == 1) {   // two steps, two-digit result: fast to see, slow for a child
-            int a = ri(r, 3, 12), b = ri(r, 3, 9), p = a * b, c = ri(r, 10, 60);
-            if (r.nextBoolean()) {
-                if (p + c >= 10 && p + c <= 99) return new Question(a + "×" + b + "+" + c, p + c);
-            } else {
-                if (p - c >= 10 && p - c <= 99) return new Question(a + "×" + b + "−" + c, p - c);
-            }
-            return null;
-        }
-        if (d == 2) {   // three steps (×, +, −), three-digit result: instant mental math for an adult
-            int a = ri(r, 12, 29), b = ri(r, 6, 9), c = ri(r, 100, 199), e = ri(r, 20, 99);
-            int v = a * b + c - e;
-            return v >= 100 && v <= 999 ? new Question(a + "×" + b + "+" + c + "−" + e, v) : null;
-        }
-        // 3: four steps with brackets, three- to four-digit result
-        int a = ri(r, 6, 25), b = ri(r, 6, 25), c = ri(r, 3, 15), e = ri(r, 3, 15), f = ri(r, 10, 150);
-        int v = (a + b) * (c + e) - f;
-        return v >= 100 && v <= 9999 ? new Question("(" + a + "+" + b + ")×(" + c + "+" + e + ")−" + f, v) : null;
+        if (d == 1) return grade1(r);   // one step, within 20
+        if (d == 2) return grade2(r);   // the multiplication table ± one step, within 100
+        // 3: three small steps, still within 100
+        int a = ri(r, 2, 9), b = ri(r, 2, 9), c = ri(r, 10, 60), e = ri(r, 1, 40);
+        int v = a * b + c - e;
+        return v >= 10 && v <= 99 ? new Question(a + "×" + b + "+" + c + "−" + e, v) : null;
     }
 
     private static int ri(Random r, int lo, int hi) { return hi <= lo ? lo : lo + r.nextInt(hi - lo + 1); }

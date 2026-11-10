@@ -40,14 +40,11 @@ public class KidQuizTest {
                 KidQuiz.generate(new Random(42), 3, 3).toString());
     }
 
-    @Test public void gateDifficultyHasTheIntendedResultSizes() {
+    @Test public void gateStaysAtGradeOneOrTwoLevel() {
         for (int i = 0; i < 50; i++) {
-            assertTrue(KidQuiz.gate(new Random(1000 + i), 1).answer >= 10);
-            assertTrue(KidQuiz.gate(new Random(1000 + i), 1).answer <= 99);
-            int mid = KidQuiz.gate(new Random(2000 + i), 2).answer;
-            assertTrue("gate 2 answer " + mid, mid >= 100 && mid <= 999);
-            int hard = KidQuiz.gate(new Random(3000 + i), 3).answer;
-            assertTrue("gate 3 answer " + hard, hard >= 100 && hard <= 9999);
+            assertTrue(KidQuiz.gate(new Random(1000 + i), 1).answer <= 20);   // easy: grade 1, within 20
+            assertTrue(KidQuiz.gate(new Random(2000 + i), 2).answer <= 100);  // default: grade 2, within 100
+            assertTrue(KidQuiz.gate(new Random(3000 + i), 3).answer <= 99);   // hard: still two-digit
         }
     }
 
