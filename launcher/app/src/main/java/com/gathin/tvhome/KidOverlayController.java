@@ -129,6 +129,9 @@ public final class KidOverlayController {
             setBackgroundColor(0xE6101418);
             setFocusable(true);
             setFocusableInTouchMode(true);
+            // Focus must land on a real keypad key: focused on the Shield itself, the focus rect is
+            // the whole screen and FocusFinder has no "next view" in any direction — the D-pad dies.
+            setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         }
 
         /** Loads the state a mode needs and renders it. Also the way the card changes mode. */
@@ -166,6 +169,7 @@ public final class KidOverlayController {
             scroll.setFillViewport(true);
             scroll.setVerticalScrollBarEnabled(false);
             scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            scroll.setFocusable(false);   // full-screen and focusable, it would swallow the initial focus
             scroll.addView(wrapper, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             if (LOCK.equals(mode)) lockContent(panel);
@@ -379,6 +383,7 @@ public final class KidOverlayController {
         private View keypad(Runnable confirm) {
             LinearLayout grid = new LinearLayout(getContext());
             grid.setOrientation(LinearLayout.VERTICAL);
+            final TextView[] first = {null};
             String[][] rows = {{"7", "8", "9"}, {"4", "5", "6"}, {"1", "2", "3"}, {"删除", "0", "确定"}};
             for (final String[] row : rows) {
                 LinearLayout line = new LinearLayout(getContext());
@@ -398,9 +403,13 @@ public final class KidOverlayController {
                     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(88), dp(56));
                     lp.setMargins(dp(6), dp(6), dp(6), dp(6));
                     line.addView(b, lp);
+                    if (first[0] == null) first[0] = b;
                 }
                 grid.addView(line);
             }
+            // The keys live or die by the D-pad: on every render one frame later, a key (not the
+            // Shield, not the scroll) holds the focus, so the arrows have somewhere to go.
+            grid.post(() -> { if (first[0] != null && first[0].isAttachedToWindow()) first[0].requestFocus(); });
             onConfirm = confirm;
             return grid;
         }
