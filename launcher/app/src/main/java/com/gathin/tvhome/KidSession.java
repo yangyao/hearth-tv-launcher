@@ -41,6 +41,7 @@ public final class KidSession {
     private KidGateServer gateServer;
     private GateUi gateUi;
     private Runnable homeListener;
+    private boolean lastEnabled;   // the enable flag last seen by rearm: the OFF→ON edge starts a fresh day
     private final Runnable ticker = this::tick;
 
     static synchronized KidSession get(Context c) {
@@ -51,6 +52,7 @@ public final class KidSession {
     private KidSession(Context app) {
         this.app = app;
         restore();
+        lastEnabled = KidModeSettings.load(app).enabled;   // a process restart is not an OFF→ON edge
     }
 
     // ---- lifecycle ---------------------------------------------------------------------------------
@@ -72,7 +74,16 @@ public final class KidSession {
 
     /** After an enable toggle or any config change (KidModeSettings.changed). */
     public void rearm() {
-        if (KidModeSettings.load(app).enabled) {
+        boolean enabled = KidModeSettings.load(app).enabled;
+        if (enabled && !lastEnabled) {
+            // Turning the mode on starts a fresh managed day: the counters only ever ran while the
+            // mode was on, and this edge belongs to the parent (the child cannot enable it), so
+            // re-entering after a gate close grants a new allowance instead of an instant lock.
+            policy.rollDay();
+            clearGate();
+        }
+        lastEnabled = enabled;
+        if (enabled) {
             applyConfig();
             rollDayIfNeeded();
             startTick();
