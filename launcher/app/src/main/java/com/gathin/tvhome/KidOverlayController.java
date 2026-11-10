@@ -159,9 +159,9 @@ public final class KidOverlayController {
             panel.setBackground(rounded(0xFF1A242C, dp(18)));
             FrameLayout wrapper = new FrameLayout(getContext());
             wrapper.addView(panel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-            // The gate card with its keypad is taller than some TV panels: a plainly centered layout
-            // would clip the bottom keypad row off the screen. A fill-viewport ScrollView centers
-            // whatever fits and scrolls the rest, and D-pad focus moves keep every key reachable.
+            // The keypad cards are side by side now (words left, keys right), so they fit any TV
+            // panel; the ScrollView stays only as a small-screen fallback, centering what fits and
+            // scrolling the rest, with D-pad focus keeping every key reachable.
             ScrollView scroll = new ScrollView(getContext());
             scroll.setFillViewport(true);
             scroll.setVerticalScrollBarEnabled(false);
@@ -180,21 +180,24 @@ public final class KidOverlayController {
 
         private void quizContent(LinearLayout panel) {
             KidQuiz.Question q = questions.get(qIndex);
-            panel.addView(text(getContext(), "休息时间", 26, 0xFFE4E8EB, dp(4)));
-            panel.addView(text(getContext(), "第 " + (qIndex + 1) + " / " + questions.size() + " 题 · 答对就能继续看", 15, 0xFF8D9BA7, dp(2)));
+            LinearLayout words = new LinearLayout(getContext());
+            words.setOrientation(LinearLayout.VERTICAL);
+            words.setGravity(Gravity.CENTER_HORIZONTAL);
+            words.addView(text(getContext(), "休息时间", 26, 0xFFE4E8EB, dp(4)));
+            words.addView(text(getContext(), "第 " + (qIndex + 1) + " / " + questions.size() + " 题 · 答对就能继续看", 15, 0xFF8D9BA7, dp(2)));
             int left = KidSession.get(getContext()).secondsLeftToday();
             if (left >= 0)   // a daily cap exists: the child sees how much of the day is left
-                panel.addView(text(getContext(), "今天还能看 " + Math.max(1, (left + 59) / 60) + " 分钟", 13, 0xFF53616B, dp(2)));
-            TextView question = text(getContext(), q.text + " = ?", 40, 0xFFFFFFFF, dp(16));
-            panel.addView(question);
+                words.addView(text(getContext(), "今天还能看 " + Math.max(1, (left + 59) / 60) + " 分钟", 13, 0xFF53616B, dp(2)));
+            words.addView(text(getContext(), q.text + " = ?", 40, 0xFFFFFFFF, dp(16)));
             answerLine = text(getContext(), "＝ " + input, 30, 0xFF9AD6A8, dp(6));
-            panel.addView(answerLine);
+            words.addView(answerLine);
             messageLine = text(getContext(), "", 15, 0xFF8D9BA7, dp(2));
-            panel.addView(messageLine);
-            panel.addView(keypad(() -> {
+            words.addView(messageLine);
+            panel.addView(sideBySide(words, keypad(() -> {
                 KidQuiz.Question current = questions.get(qIndex);
                 if (input.length() == 0) return;
                 if (Integer.parseInt(input.toString()) == current.answer) {
+                    input.setLength(0);   // the next question starts with an empty answer
                     qIndex++;
                     if (qIndex >= questions.size()) {
                         passedAll = true;
@@ -209,7 +212,7 @@ public final class KidOverlayController {
                     messageLine.setText("不对，再想一想");
                     messageLine.setTextColor(0xFFE57373);
                 }
-            }));
+            })));
             parentEntry(panel);
         }
 
@@ -246,18 +249,17 @@ public final class KidOverlayController {
             }
 
             // No QR (toggle off, or the TV has no LAN): the question with the remote keypad.
-            panel.addView(text(getContext(), "请家长计算，孩子不用试啦", 15, 0xFF8D9BA7, dp(2)));
-            LinearLayout left = new LinearLayout(getContext());
-            left.setOrientation(LinearLayout.VERTICAL);
-            left.setGravity(Gravity.CENTER_HORIZONTAL);
             KidQuiz.Question q = session.gateQuestion();
-            left.addView(text(getContext(), q.text + " = ?", 38, 0xFFFFFFFF, dp(16)));
+            LinearLayout words = new LinearLayout(getContext());
+            words.setOrientation(LinearLayout.VERTICAL);
+            words.setGravity(Gravity.CENTER_HORIZONTAL);
+            words.addView(text(getContext(), "请家长计算，孩子不用试啦", 15, 0xFF8D9BA7, dp(2)));
+            words.addView(text(getContext(), q.text + " = ?", 38, 0xFFFFFFFF, dp(16)));
             answerLine = text(getContext(), "＝ " + input, 30, 0xFF9AD6A8, dp(6));
-            left.addView(answerLine);
+            words.addView(answerLine);
             messageLine = text(getContext(), "", 15, 0xFF8D9BA7, dp(2));
-            left.addView(messageLine);
-            left.addView(keypad(this::submitGate));
-            panel.addView(left);
+            words.addView(messageLine);
+            panel.addView(sideBySide(words, keypad(this::submitGate)));
         }
 
         /** The quiz card's quiet way in for a parent; the dropdown's close entry lands on GATE directly. */
@@ -377,7 +379,6 @@ public final class KidOverlayController {
         private View keypad(Runnable confirm) {
             LinearLayout grid = new LinearLayout(getContext());
             grid.setOrientation(LinearLayout.VERTICAL);
-            grid.setPadding(0, dp(14), 0, 0);
             String[][] rows = {{"7", "8", "9"}, {"4", "5", "6"}, {"1", "2", "3"}, {"删除", "0", "确定"}};
             for (final String[] row : rows) {
                 LinearLayout line = new LinearLayout(getContext());
@@ -402,6 +403,23 @@ public final class KidOverlayController {
             }
             onConfirm = confirm;
             return grid;
+        }
+
+        /**
+         * The wide TV: the words on the left, the keypad to their right. Stacked, the card ran
+         * ~560dp tall — past some TV panels, into scrolling; side by side it is ~half that and
+         * every key is on screen at once.
+         */
+        private LinearLayout sideBySide(LinearLayout words, View keys) {
+            LinearLayout row = new LinearLayout(getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            p.leftMargin = dp(32);
+            row.addView(words);
+            row.addView(keys, p);
+            return row;
         }
 
         private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
