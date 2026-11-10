@@ -494,6 +494,8 @@ final class AppLibraryDialog {
     }
 
     private void open(ResolveInfo app) {
+        // Kids mode: locked or quiz pending, the library opens nothing either.
+        if (KidSession.get(activity).interceptLaunch()) return;
         close();
         Intent intent = new Intent(Intent.ACTION_MAIN).setComponent(
                 new ComponentName(app.activityInfo.packageName, app.activityInfo.name));

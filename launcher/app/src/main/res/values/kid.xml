@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kids mode strings. Chinese by default, like nas.xml; the config page uses inline text. -->
+<resources>
+    <string name="kids_mode">儿童模式</string>
+    <string name="kids_mode_settings">儿童模式设置…</string>
+    <string name="kids_mode_on_hint">儿童模式开启中（关闭需家长验证）</string>
+    <string name="kids_mode_enabled_toast">儿童模式已开启：回到桌面即生效</string>
+    <string name="kids_mode_quiz_toast">休息时间到，请回到桌面完成答题</string>
+    <string name="kids_mode_locked_toast">今天的时间用完了，请家长解锁</string>
+</resources>

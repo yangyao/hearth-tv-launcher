@@ -138,6 +138,7 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     public void onDestroy() {
         if (running == this) running = null;
+        KidSession.serviceDown();
         stopWaitingForUnlock();
         if (screenOnReceiver != null) unregisterReceiver(screenOnReceiver);
         if (standbyExit != null) {
@@ -197,7 +198,10 @@ public class HomeKeyService extends AccessibilityService {
         homeLongPressHome = config.homeLongPressHome;
         frontAppKeys = RemoteKeys.parseFrontAppKeys(config.appKeys);
         frontAppScancodes = RemoteKeys.parseFrontAppScancodes(config.appKeys);
-        boolean watchFront = !frontAppKeys.isEmpty() || !frontAppScancodes.isEmpty();
+        // Kids mode tracks the front app too, so its timer knows when a child is watching. Re-read via
+        // applyKidsMode() whenever the toggle changes (KidModeSettings.changed).
+        boolean watchFront = !frontAppKeys.isEmpty() || !frontAppScancodes.isEmpty()
+                || KidModeSettings.load(this).enabled;
         stockHome.clear();
         stockHomePackage = config.stockHomeRedirect;
         if (!config.stockHomeRedirect.isEmpty()) {
@@ -235,6 +239,14 @@ public class HomeKeyService extends AccessibilityService {
             gamepads = new GamepadPassthrough(this);
             gamepads.start();
         }
+        // Kids mode rides on this service (front-window tracking, the 60 s tick, the overlay host).
+        KidSession.get(this).serviceUp();
+    }
+
+    /** Kids mode toggled (KidModeSettings.changed): re-read the config, so window events stay subscribed. */
+    static void applyKidsMode() {
+        HomeKeyService service = running;
+        if (service != null) service.loadConfig();
     }
 
     /** A tap's target: the "front:" entry while the button's own app is already in front, else the usual one. */
@@ -265,6 +277,8 @@ public class HomeKeyService extends AccessibilityService {
         // The stock launcher handled the remote's Settings button; with it disabled the button does nothing.
         if (isSettingsKey(event)) {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                // Kids mode: the Settings key opens nothing, so it is no way around the shrink.
+                if (KidModeSettings.load(this).enabled) return true;
                 Intent open = settingsPanel ? new Intent(this, QuickSettingsActivity.class)
                         : SystemSettings.intent(this, Settings.ACTION_SETTINGS);
                 try {
@@ -301,13 +315,16 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        // app_keys "front:" entries: only activities count, so a toast or the volume bar doesn't change the app in front.
-        if ((!frontAppKeys.isEmpty() || !frontAppScancodes.isEmpty())
-                && event.getPackageName() != null && event.getClassName() != null) {
+        // app_keys "front:" entries and kids mode: only activities count, so a toast or the volume bar
+        // doesn't change the app in front.
+        boolean trackFront = !frontAppKeys.isEmpty() || !frontAppScancodes.isEmpty()
+                || KidModeSettings.load(this).enabled;
+        if (trackFront && event.getPackageName() != null && event.getClassName() != null) {
             try {
                 ComponentName window = new ComponentName(event.getPackageName().toString(), event.getClassName().toString());
                 getPackageManager().getActivityInfo(window, 0);
                 frontPackage = window.getPackageName();
+                KidSession.get(this).onForegroundPackage(frontPackage);
             } catch (PackageManager.NameNotFoundException notAnActivity) {
                 // a dialog, panel or overlay: the app under it is still in front
             }

@@ -998,6 +998,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (openLiveTvAfterBoot()) return;
         updateGreeting();
         updateRace();
+        // Kids mode: Home being back means not-watching; also settles the fallback tail and, degraded,
+        // puts the quiz or lock back up.
+        KidSession.get(this).onHomeResumed();
         // The network and Inputs pills keep their state while Home is in the background, and callbacks update them
         // when the network or the inputs change, so this refresh only catches anything missed. Its binder calls
         // (about 7 ms on a TCL C755, most of it WifiManager.getConnectionInfo) would hold up the first frame back
@@ -2412,7 +2415,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             button.setCompoundDrawableTintList(null);
             button.setContentDescription(label);
             Intent target = launch;
-            button.setOnClickListener(v -> open(new Intent(target)));
+            button.setOnClickListener(v -> {
+                if (KidSession.get(this).interceptLaunch()) return;   // kids mode: locked or quiz pending
+                open(new Intent(target));
+            });
             // After the network pill and the VPN pill; the Hebrew bar runs the other way, so before both there.
             bar.addView(button, bar.indexOfChild(getResources().getBoolean(R.bool.rtl_menu_bar) ? btnVpn : btnWifi));
             topAppButtons.add(button);
@@ -2925,6 +2931,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         SharedPreferences prefs = getSharedPreferences(OpenOnStart.BOOT_PREFS, MODE_PRIVATE);
         String target = bootToLiveTv ? liveTvPkg : app;
         if (!OpenOnStart.due(boot, prefs.getInt(OpenOnStart.BOOT_KEY, -1), target, getPackageName())) return false;
+        // Kids mode: a locked boot opens nothing; mark the boot handled either way, so unlocking later
+        // does not auto-open the app mid-session.
+        if (KidSession.get(this).interceptLaunch()) {
+            prefs.edit().putInt(OpenOnStart.BOOT_KEY, boot).commit();
+            return true;
+        }
         if (!prefs.edit().putInt(OpenOnStart.BOOT_KEY, boot).commit()) return false;
         Intent i = bootToLiveTv ? liveTvIntent() : OpenOnStart.intent(getPackageManager(), app);
         if (i == null) return false;
@@ -3311,24 +3323,40 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
         PopupWindow popup = glassPopup(panel, (int) (220 * density));
-        // Inputs opens its own list once this one has closed.
-        if (showInputsMenuRow) addInputRow(rows, popup, R.drawable.ic_input, getString(R.string.inputs), -1, () -> root.post(this::showInputs));
-        addInputRow(rows, popup, R.drawable.ic_wifi, getString(R.string.quick_network), -1, this::openNetworkPill);
-        CharSequence network = wifiIconOnly ? btnWifi.getContentDescription() : btnWifi.getText();
-        if (!TextUtils.isEmpty(network)) {
-            TextView status = rows.getChildAt(rows.getChildCount() - 1).findViewById(R.id.status);
-            status.setText(network);
-            status.setVisibility(View.VISIBLE);
+        // Kids mode shrinks the dropdown to its own row: closing it is the only thing on offer.
+        boolean kidsOn = KidModeSettings.load(this).enabled;
+        if (!kidsOn) {
+            // Inputs opens its own list once this one has closed.
+            if (showInputsMenuRow) addInputRow(rows, popup, R.drawable.ic_input, getString(R.string.inputs), -1, () -> root.post(this::showInputs));
+            addInputRow(rows, popup, R.drawable.ic_wifi, getString(R.string.quick_network), -1, this::openNetworkPill);
+            CharSequence network = wifiIconOnly ? btnWifi.getContentDescription() : btnWifi.getText();
+            if (!TextUtils.isEmpty(network)) {
+                TextView status = rows.getChildAt(rows.getChildCount() - 1).findViewById(R.id.status);
+                status.setText(network);
+                status.setVisibility(View.VISIBLE);
+            }
+            addInputRow(rows, popup, R.drawable.ic_settings, getString(R.string.nas_photo_settings), -1,
+                    () -> startActivity(new Intent(this, NasPhotoSettingsActivity.class)));
+            addInputRow(rows, popup, R.drawable.ic_swap_vert, getString(R.string.reorder), -1, this::toggleReorder);
+            if (launcherSettingsButton) {
+                addInputRow(rows, popup, R.drawable.ic_home_settings_pill, getString(R.string.launcher_settings), -1,
+                        () -> startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+            } else {
+                addInputRow(rows, popup, R.drawable.ic_settings, getString(R.string.settings), -1,
+                        () -> open(systemIntent(Settings.ACTION_SETTINGS)));
+            }
         }
-        addInputRow(rows, popup, R.drawable.ic_settings, getString(R.string.nas_photo_settings), -1,
-                () -> startActivity(new Intent(this, NasPhotoSettingsActivity.class)));
-        addInputRow(rows, popup, R.drawable.ic_swap_vert, getString(R.string.reorder), -1, this::toggleReorder);
-        if (launcherSettingsButton) {
-            addInputRow(rows, popup, R.drawable.ic_home_settings_pill, getString(R.string.launcher_settings), -1,
-                    () -> startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
-        } else {
-            addInputRow(rows, popup, R.drawable.ic_settings, getString(R.string.settings), -1,
-                    () -> open(systemIntent(Settings.ACTION_SETTINGS)));
+        // One press turns kids mode on. Closing it needs the parent gate; its settings stay parent-only too.
+        addInputRow(rows, popup, R.drawable.ic_kid, kidsOn ? getString(R.string.kids_mode_on_hint) : getString(R.string.kids_mode), -1,
+                kidsOn
+                        ? (Runnable) () -> startActivity(new Intent(this, ParentGateActivity.class).putExtra(ParentGateActivity.EXTRA_MODE, ParentGateActivity.MODE_GATE))
+                        : (Runnable) () -> {
+                            KidModeSettings.setEnabled(this, true);
+                            Toast.makeText(this, R.string.kids_mode_enabled_toast, Toast.LENGTH_SHORT).show();
+                        });
+        if (!kidsOn) {
+            addInputRow(rows, popup, R.drawable.ic_kid, getString(R.string.kids_mode_settings), -1,
+                    () -> startActivity(new Intent(this, KidModeSettingsActivity.class)));
         }
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (220 * density), Math.min(panel.getMeasuredWidth(), (int) (360 * density))));
@@ -3338,6 +3366,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** The header opens launcher settings directly; hold OK keeps the extra home actions available. */
     private void showSettingsMenu() {
+        // Kids mode: none of these are on offer, not even the vendor settings with its ADB switch.
+        if (KidModeSettings.load(this).enabled) {
+            Toast.makeText(this, R.string.kids_mode_on_hint, Toast.LENGTH_SHORT).show();
+            return;
+        }
         View anchor = findViewById(R.id.btnSettings);
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);

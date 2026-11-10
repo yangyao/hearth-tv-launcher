@@ -27,6 +27,12 @@ public final class QuickSettingsActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        // Kids mode: the panel is a parent surface, so it opens nothing while it is on.
+        if (KidModeSettings.load(this).enabled) {
+            Toast.makeText(this, R.string.kids_mode_on_hint, Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_quick_settings);
         if (getResources().getBoolean(R.bool.rtl_menu_bar)) {
             View panel = findViewById(R.id.panel);
