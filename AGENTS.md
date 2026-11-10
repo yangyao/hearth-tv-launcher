@@ -1,4 +1,4 @@
-# NAS TV Wallpaper
+# Hearth TV Launcher
 
 Android TV launcher fork and bounded, read-only Go photo service. Original CleanYourTV guidance is retained in docs/UPSTREAM_AGENTS.md; optional LAN integration is intentional.
 
