@@ -6,5 +6,5 @@
     <string name="kids_mode_on_hint">儿童模式开启中（关闭需家长验证）</string>
     <string name="kids_mode_enabled_toast">儿童模式已开启：回到桌面即生效</string>
     <string name="kids_mode_quiz_toast">休息时间到，请回到桌面完成答题</string>
-    <string name="kids_mode_locked_toast">今天的时间用完了，请家长解锁</string>
+    <string name="kids_mode_locked_toast">今天的时间用完了，想再看请家长验证</string>
 </resources>

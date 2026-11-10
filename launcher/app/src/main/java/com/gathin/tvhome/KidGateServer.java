@@ -164,28 +164,12 @@ public final class KidGateServer {
             }
             KidSession.GateResult result = session.submitGateAnswer(value);
             if (result == KidSession.GateResult.OK) {
-                respond(sock, 200, choicePage());
+                respond(sock, 200, page("已关闭", "儿童模式已关闭，电视回到普通桌面。想再管，回桌面点齿轮下拉菜单里的「儿童模式」。"));
             } else if (result == KidSession.GateResult.WRONG) {
                 long left = waitSeconds();
                 respond(sock, 200, waitPage("答案不正确，请再想一道新题", left));
             } else {
                 respond(sock, 200, waitPage("请稍等，冷却还没结束", waitSeconds()));
-            }
-            return;
-        }
-        // The choice also comes as a GET anchor: plain links never clip their label the way
-        // <button> does on phones. The token in the URL is the capability anyway.
-        if ((req.method.equals("POST") || req.method.equals("GET")) && req.path.equals("/c")
-                && tokenValid(req.param("t"))) {
-            String choice = req.param("c");
-            if ("unlock".equals(choice)) {
-                session.unlockTodayAsync();   // view work goes to the main thread, never here
-                respond(sock, 200, page("已解锁", "今天可以在家长陪同下继续看了。"));
-            } else if ("close".equals(choice)) {
-                session.closeModeAsync();
-                respond(sock, 200, page("已关闭", "儿童模式已关闭，电视回到普通桌面。"));
-            } else {
-                respond(sock, 404, page("打不开", "请求有误，请回到电视重新扫码。"));
             }
             return;
         }
@@ -222,13 +206,6 @@ public final class KidGateServer {
                 + "<body style=\"font-family:-apple-system,sans-serif;background:#101418;color:#E4E8EB;text-align:center;padding:60px 24px\">"
                 + "<h2>" + esc(line) + "</h2>"
                 + "<p style=\"color:#8D9BA7\">" + capped + " 秒后自动刷新到新题目</p></body></html>";
-    }
-
-    private String choicePage() {
-        return page("验证通过",
-                "<p style=\"color:#9AD6A8;font-size:22px\">验证通过，接下来想怎么做？</p>"
-                + "<a href=\"/c?t=" + token + "&c=unlock\" style=\"display:block;width:80%;margin:26px auto 0;padding:18px 12px;font-size:20px;background:#33444F;color:#fff;border-radius:12px;text-decoration:none\">今日解锁（家长陪同）</a>"
-                + "<a href=\"/c?t=" + token + "&c=close\" style=\"display:block;width:80%;margin:16px auto 0;padding:18px 12px;font-size:20px;background:#202A31;color:#E4E8EB;border:1px solid #53616B;border-radius:12px;text-decoration:none\">关闭儿童模式</a>");
     }
 
     private static String page(String title, String body) {

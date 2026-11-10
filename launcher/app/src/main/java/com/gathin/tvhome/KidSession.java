@@ -174,14 +174,6 @@ public final class KidSession {
         react();
     }
 
-    public void onUnlockToday() {
-        policy.onUnlockedToday();
-        persist();
-        KidOverlayController.dismiss();
-        react();
-        notifyGateClosed();
-    }
-
     public void onCloseMode() {
         KidModeSettings.setEnabled(app, false);
         KidOverlayController.dismiss();
@@ -219,7 +211,7 @@ public final class KidSession {
     /** The visible gate card listens while it is up; a phone answer re-renders it on the main thread. */
     public interface GateUi {
         void onGateAnswered(GateResult result);
-        /** The choice (unlock/close) was made on the phone: close the card surface. */
+        /** The gate passed and kids mode is off (the phone's answer closed it): close the card too. */
         void onGateClosed();
     }
 
@@ -239,9 +231,10 @@ public final class KidSession {
     }
 
     /**
-     * One gate answer, whichever way it came in: right clears the gate, wrong earns the exponential
-     * cooldown on a fresh question, and during a cooldown nothing is even checked. The answer never
-     * leaves the TV — the phone only ever sends a guess.
+     * One gate answer, whichever way it came in: right turns kids mode off (posted to the main
+     * thread — this is reached from the LAN server too), wrong earns the exponential cooldown on a
+     * fresh question, and during a cooldown nothing is even checked. The answer never leaves the
+     * TV — the phone only ever sends a guess.
      */
     public GateResult submitGateAnswer(String value) {
         long now = System.currentTimeMillis();
@@ -266,7 +259,7 @@ public final class KidSession {
         }
         gateQuestion = null;
         clearGate();
-        notifyGateUi(GateResult.OK);
+        closeModeAsync();   // passing the gate is the off switch; no further choice exists
         return GateResult.OK;
     }
 
@@ -298,8 +291,6 @@ public final class KidSession {
      * The phone made the choice: the LAN server thread must never touch views, so the session work
      * (which dismisses the overlay) runs on the main thread instead.
      */
-    public void unlockTodayAsync() { handler.post(this::onUnlockToday); }
-
     public void closeModeAsync() { handler.post(this::onCloseMode); }
 
     // ---- internals -----------------------------------------------------------------------------------
@@ -328,8 +319,7 @@ public final class KidSession {
                 KidModeSettings.prefs(app).getInt("watched_seconds", 0),
                 KidModeSettings.prefs(app).getInt("quiz_level", 0),
                 KidModeSettings.prefs(app).getBoolean("pending_quiz", false),
-                KidModeSettings.prefs(app).getBoolean("locked_today", false),
-                KidModeSettings.prefs(app).getBoolean("unlocked_today", false));
+                KidModeSettings.prefs(app).getBoolean("locked_today", false));
     }
 
     private void persist() {
@@ -339,7 +329,6 @@ public final class KidSession {
                 .putInt("quiz_level", policy.quizLevel())
                 .putBoolean("pending_quiz", policy.pendingQuiz())
                 .putBoolean("locked_today", policy.lockedToday())
-                .putBoolean("unlocked_today", policy.unlockedToday())
                 .commit();
     }
 
@@ -353,13 +342,11 @@ public final class KidSession {
         if (!interactive()) return KidOverlayController.showing();   // screen off: the layer keeps waiting
         String up = KidOverlayController.currentMode();
         if (policy.lockedToday()) {
-            if (KidOverlayController.LOCK.equals(up) || KidOverlayController.GATE.equals(up)
-                    || KidOverlayController.OPTIONS.equals(up) || KidOverlayController.PASSED.equals(up)) return true;
+            if (KidOverlayController.LOCK.equals(up) || KidOverlayController.GATE.equals(up)) return true;
             return showLayer(KidOverlayController.LOCK);
         }
         if (policy.pendingQuiz()) {
-            if (KidOverlayController.QUIZ.equals(up) || KidOverlayController.GATE.equals(up)
-                    || KidOverlayController.OPTIONS.equals(up) || KidOverlayController.PASSED.equals(up)) return true;
+            if (KidOverlayController.QUIZ.equals(up) || KidOverlayController.GATE.equals(up)) return true;
             return showLayer(KidOverlayController.QUIZ);
         }
         KidOverlayController.dismiss();
@@ -380,7 +367,6 @@ public final class KidSession {
     private KidOverlayController.Host overlayHost() {
         return new KidOverlayController.Host() {
             @Override public void onQuizPassed() { KidSession.this.onQuizPassed(); }
-            @Override public void onUnlockToday() { KidSession.this.onUnlockToday(); }
             @Override public void onCloseMode() { KidSession.this.onCloseMode(); }
             @Override public void onGateAbandon() { /* nothing gets past the overlay */ }
         };

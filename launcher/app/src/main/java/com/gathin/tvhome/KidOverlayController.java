@@ -29,15 +29,13 @@ import java.util.Random;
  */
 public final class KidOverlayController {
 
-    public static final String QUIZ = "quiz", LOCK = "lock", GATE = "gate", OPTIONS = "options", PASSED = "passed";
+    public static final String QUIZ = "quiz", LOCK = "lock", GATE = "gate";
 
     /** What the cards call back into; the overlay and the in-Home activity wire it to KidSession. */
     public interface Host {
         /** The child answered the whole group. */
         void onQuizPassed();
-        /** Parent chose "unlock for today". */
-        void onUnlockToday();
-        /** Parent chose "turn kids mode off". */
+        /** Parent chose "turn kids mode off" (the only thing the gate leads to). */
         void onCloseMode();
         /** Back on the gate: the overlay ignores it, the in-Home activity finishes. */
         void onGateAbandon();
@@ -52,7 +50,7 @@ public final class KidOverlayController {
 
     public static boolean showing() { return current != null; }
 
-    /** What is on the layer right now (QUIZ, LOCK, GATE or OPTIONS), or null. */
+    /** What is on the layer right now (QUIZ, LOCK or GATE), or null. */
     public static String currentMode() { return currentMode; }
 
     /** Shows {@code mode} over everything; false when the overlay permission is missing. */
@@ -142,9 +140,8 @@ public final class KidOverlayController {
             if (GATE.equals(mode)) {
                 KidSession session = KidSession.get(getContext());
                 gateServer = cfg.qrAnswer ? session.ensureGateServer() : null;
-                session.setGateUi(this);   // the phone's answers and choice re-render / close this card
+                session.setGateUi(this);   // the phone's answers re-render / close this card
             }
-            if (OPTIONS.equals(mode)) KidSession.get(getContext()).clearGate();
             input.setLength(0);
             passedAll = false;
             render();
@@ -171,10 +168,8 @@ public final class KidOverlayController {
             scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
             scroll.addView(wrapper, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            if (OPTIONS.equals(mode)) optionsContent(panel);
-            else if (LOCK.equals(mode)) lockContent(panel);
+            if (LOCK.equals(mode)) lockContent(panel);
             else if (GATE.equals(mode)) gateContent(panel);
-            else if (PASSED.equals(mode)) passedContent(panel);
             else if (passedAll) doneContent(panel);
             else quizContent(panel);
             handler.removeCallbacks(gateTick);
@@ -224,8 +219,8 @@ public final class KidOverlayController {
             KidModeSettings cfg = KidModeSettings.load(getContext());
             panel.addView(text(getContext(), "今天的时间用完了", 26, 0xFFE4E8EB, dp(4)));
             panel.addView(text(getContext(), "每天可用 " + cfg.dailyCapMinutes + " 分钟，现在该休息了。", 17, 0xFF8D9BA7, dp(2)));
-            panel.addView(text(getContext(), "想继续看或关掉儿童模式，请家长解锁。", 15, 0xFF8D9BA7, dp(2)));
-            panel.addView(bigButton(getContext(), "家长解锁", () -> swap(GATE), dp(18)));
+            panel.addView(text(getContext(), "想关掉儿童模式，请家长验证。", 15, 0xFF8D9BA7, dp(2)));
+            panel.addView(bigButton(getContext(), "家长验证", () -> swap(GATE), dp(18)));
         }
 
         private void gateContent(LinearLayout panel) {
@@ -262,23 +257,6 @@ public final class KidOverlayController {
             panel.addView(left);
         }
 
-        private void optionsContent(LinearLayout panel) {
-            panel.addView(text(getContext(), "验证通过", 26, 0xFF9AD6A8, dp(4)));
-            panel.addView(text(getContext(), "接下来想怎么做？", 17, 0xFF8D9BA7, dp(2)));
-            panel.addView(bigButton(getContext(), "今日解锁（家长陪同）", () -> host.onUnlockToday(), dp(18)));
-            panel.addView(bigButton(getContext(), "关闭儿童模式", () -> host.onCloseMode(), dp(18)));
-        }
-
-        /**
-         * The QR path's after-pass card: passive on purpose — the choice happens on the phone where
-         * the QR was answered, and this card just follows (it goes away when the choice lands).
-         */
-        private void passedContent(LinearLayout panel) {
-            panel.addView(text(getContext(), "验证通过", 30, 0xFF9AD6A8, dp(6)));
-            panel.addView(text(getContext(), "请在手机上选择下一步", 17, 0xFF8D9BA7, dp(10)));
-            panel.addView(text(getContext(), "电视会跟着手机的操作自动变化", 13, 0xFF53616B, dp(4)));
-        }
-
         /** The quiz card's quiet way in for a parent; the dropdown's close entry lands on GATE directly. */
         private void parentEntry(LinearLayout panel) {
             TextView entry = text(getContext(), "家长入口", 13, 0xFF53616B, dp(0));
@@ -296,20 +274,14 @@ public final class KidOverlayController {
             KidSession.get(getContext()).submitGateAnswer(input.toString());
         }
 
-        /** A gate answer landed (TV keypad or phone): choose where the choice happens. */
+        /** A wrong gate answer landed (TV keypad or phone): re-render with the fresh question. */
         @Override public void onGateAnswered(KidSession.GateResult result) {
-            if (result == KidSession.GateResult.OK) {
-                // QR mode: the phone chose to answer, so the phone also chooses what's next; the
-                // keypad path has no phone, so the choice buttons stay here on the TV.
-                boolean qr = gateServer != null && gateServer.running();
-                swap(qr ? PASSED : OPTIONS);
-                return;
-            }
             if (result == KidSession.GateResult.WRONG) {
                 input.setLength(0);
                 render();
             }
-            // COOLDOWN: the tick below is already counting the wait down.
+            // OK: KidSession turns the mode off and the whole card goes away; COOLDOWN: the tick
+            // below is already counting the wait down.
         }
 
         /** The choice was made on the phone: the in-Home activity closes, the overlay host ignores it. */
@@ -359,9 +331,9 @@ public final class KidOverlayController {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 switch (event.getKeyCode()) {
                     case KeyEvent.KEYCODE_BACK:
-                        // Gate and passed: the parent may change their mind (the quiz/lock returns);
+                        // Gate: the parent may change their mind (the quiz/lock returns);
                         // quiz and lock: nothing gets past the layer.
-                        if (GATE.equals(mode) || PASSED.equals(mode)) host.onGateAbandon();
+                        if (GATE.equals(mode)) host.onGateAbandon();
                         return true;
                     case KeyEvent.KEYCODE_MENU:
                     case KeyEvent.KEYCODE_SETTINGS:

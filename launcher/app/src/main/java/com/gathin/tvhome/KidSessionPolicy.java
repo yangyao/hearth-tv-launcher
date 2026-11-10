@@ -3,7 +3,7 @@ package com.gathin.tvhome;
 /**
  * The kids-mode rule engine, free of Android so it unit-tests directly. Daily cumulative model:
  * watched seconds accumulate only while a third-party app is in front and the screen is on; each
- * full session triggers one quiz checkpoint; the daily cap locks the TV until a parent unlocks it.
+ * full session triggers one quiz checkpoint; the daily cap locks the TV for the rest of the day.
  * All state survives the process via KidSession's persistence — nothing here is remembered that
  * KidSession does not save.
  */
@@ -13,7 +13,7 @@ public final class KidSessionPolicy {
 
     private int sessionSeconds, capSeconds;
     private int watchedSeconds, quizLevel;
-    private boolean watching, pendingQuiz, lockedToday, unlockedToday;
+    private boolean watching, pendingQuiz, lockedToday;
 
     public KidSessionPolicy(int sessionSeconds, int capSeconds) {
         this.sessionSeconds = clamp(sessionSeconds, 300, 1800);
@@ -50,28 +50,20 @@ public final class KidSessionPolicy {
         recheck();
     }
 
-    /** A parent unlocked the day: no more quizzes or locks until tomorrow; counting keeps going for the record. */
-    public void onUnlockedToday() {
-        unlockedToday = true;
-        recheck();
-    }
-
     /** The local date changed: a fresh day. */
     public void rollDay() {
         watchedSeconds = 0;
         quizLevel = 0;
         pendingQuiz = false;
         lockedToday = false;
-        unlockedToday = false;
     }
 
     /** Restores persisted state (after reboot or process death). */
-    public void restore(int watchedSeconds, int quizLevel, boolean pendingQuiz, boolean lockedToday, boolean unlockedToday) {
+    public void restore(int watchedSeconds, int quizLevel, boolean pendingQuiz, boolean lockedToday) {
         this.watchedSeconds = Math.max(0, watchedSeconds);
         this.quizLevel = Math.max(0, quizLevel);
         this.pendingQuiz = pendingQuiz;
         this.lockedToday = lockedToday;
-        this.unlockedToday = unlockedToday;
         recheck();
     }
 
@@ -86,10 +78,8 @@ public final class KidSessionPolicy {
     public int quizLevel() { return quizLevel; }
     public boolean pendingQuiz() { return pendingQuiz; }
     public boolean lockedToday() { return lockedToday; }
-    public boolean unlockedToday() { return unlockedToday; }
 
     private void recheck() {
-        if (unlockedToday) { pendingQuiz = false; return; }
         if (capSeconds > 0 && watchedSeconds >= capSeconds) {
             lockedToday = true;
             pendingQuiz = false;

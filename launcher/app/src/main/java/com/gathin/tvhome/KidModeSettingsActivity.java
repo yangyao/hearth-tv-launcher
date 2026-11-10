@@ -52,7 +52,7 @@ public class KidModeSettingsActivity extends Activity {
         setContentView(scroll);
 
         add(root, text("儿童模式", 27), 50);
-        add(root, text("看满单次时长弹出题目，答对继续；每天累计到上限就锁定，只有家长能解锁。开启后，桌面只保留儿童模式入口。", 16), 60);
+        add(root, text("看满单次时长弹出题目，答对继续；每天累计到上限就锁定，想再看需家长验证（验证通过即关闭儿童模式）。开启后，桌面只保留儿童模式入口。", 16), 60);
 
         long watched = p.getInt("watched_seconds", 0) / 60;
         String cap = cfg.dailyCapMinutes == 0 ? "不限" : cfg.dailyCapMinutes + " 分钟";
@@ -93,7 +93,7 @@ public class KidModeSettingsActivity extends Activity {
         add(root, text("每日上限（到点锁定，0 为不限）", 16), 40);
         add(root, optionsRow(new String[]{"30", "60", "90", "120", "不限"}, indexOfCap(cfg.dailyCapMinutes), i -> save(null, null, null, null, capChoice(i), null)), 56);
 
-        add(root, text("家长门禁难度（关闭儿童模式 / 解锁用，独立于年级）", 16), 40);
+        add(root, text("家长门禁难度（关闭儿童模式用，独立于年级）", 16), 40);
         add(root, optionsRow(new String[]{"简单", "较难", "很难"}, cfg.gateDifficulty - 1, i -> save(null, null, null, null, null, i + 1)), 56);
         add(root, text("示例：" + KidQuiz.gate(new Random(), cfg.gateDifficulty).text + " = ?", 15), 40);
 

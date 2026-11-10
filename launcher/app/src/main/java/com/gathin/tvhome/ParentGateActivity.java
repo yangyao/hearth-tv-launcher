@@ -53,7 +53,6 @@ public class ParentGateActivity extends Activity implements KidOverlayController
     // KidOverlayController.Host: the card stays up until one of these runs, then this activity leaves.
 
     @Override public void onQuizPassed() { KidSession.get(this).onQuizPassed(); finish(); }
-    @Override public void onUnlockToday() { KidSession.get(this).onUnlockToday(); finish(); }
     @Override public void onCloseMode() { KidSession.get(this).onCloseMode(); finish(); }
     @Override public void onGateAbandon() { finish(); }   // Back on the gate: no change, mode stays on
 }

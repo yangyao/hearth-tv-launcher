@@ -87,18 +87,6 @@ public class KidSessionPolicyTest {
         assertFalse(p.lockedToday());
     }
 
-    @Test public void parentUnlockForTodaySuppressesQuizzesAndLock() {
-        KidSessionPolicy p = new KidSessionPolicy(600, 1200);
-        p.onUnlockedToday();
-        p.setWatching(true);
-        p.tick(100000);
-        assertFalse(p.pendingQuiz());
-        assertFalse(p.lockedToday());
-        assertEquals(100000, p.watchedSeconds());  // still counted, for the record
-        p.rollDay();
-        assertFalse(p.unlockedToday());            // tomorrow the rules are back
-    }
-
     @Test public void rollDayResetsEverything() {
         KidSessionPolicy p = new KidSessionPolicy(600, 1800);
         p.setWatching(true);
@@ -112,7 +100,7 @@ public class KidSessionPolicyTest {
 
     @Test public void persistedStateRestores() {
         KidSessionPolicy p = new KidSessionPolicy(600, 3600);
-        p.restore(700, 1, false, false, false);    // reboot mid-way through the second session
+        p.restore(700, 1, false, false);    // reboot mid-way through the second session
         p.setWatching(true);
         p.tick(499);
         assertFalse(p.pendingQuiz());
@@ -122,7 +110,7 @@ public class KidSessionPolicyTest {
 
     @Test public void restoredLockStaysLocked() {
         KidSessionPolicy p = new KidSessionPolicy(600, 3600);
-        p.restore(3600, 6, false, true, false);
+        p.restore(3600, 6, false, true);
         assertEquals(KidSessionPolicy.Phase.LOCKED, p.phase());
         p.setWatching(true);
         assertFalse(p.isWatching());
