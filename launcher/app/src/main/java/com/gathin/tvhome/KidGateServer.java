@@ -206,7 +206,7 @@ public final class KidGateServer {
                 + "<form method=\"post\" action=\"/a\">"
                 + "<input type=\"hidden\" name=\"t\" value=\"" + token + "\">"
                 + "<input name=\"v\" inputmode=\"numeric\" autocomplete=\"off\" style=\"font-size:26px;width:70%;padding:12px;text-align:center;border:1px solid #53616B;border-radius:10px\" placeholder=\"输入结果\">"
-                + "<br><button style=\"font-size:22px;padding:14px 56px;margin-top:22px;background:#33444F;color:#fff;border:0;border-radius:12px\">提交</button>"
+                + "<br><button style=\"font-size:22px;padding:14px 56px;margin-top:22px;background:#33444F;color:#fff;border:0;border-radius:12px;line-height:1.5\">提交</button>"
                 + "</form>");
     }
 
@@ -225,8 +225,8 @@ public final class KidGateServer {
         return page("验证通过",
                 "<p style=\"color:#9AD6A8;font-size:22px\">验证通过，接下来想怎么做？</p>"
                 + "<form method=\"post\" action=\"/c\"><input type=\"hidden\" name=\"t\" value=\"" + token + "\">"
-                + "<button name=\"c\" value=\"unlock\" style=\"display:block;width:80%;margin:26px auto 0;padding:16px;font-size:20px;background:#33444F;color:#fff;border:0;border-radius:12px\">今日解锁（家长陪同）</button>"
-                + "<button name=\"c\" value=\"close\" style=\"display:block;width:80%;margin:16px auto 0;padding:16px;font-size:20px;background:#202A31;color:#E4E8EB;border:1px solid #53616B;border-radius:12px\">关闭儿童模式</button>"
+                + "<button name=\"c\" value=\"unlock\" style=\"display:block;width:80%;margin:26px auto 0;padding:16px 12px;font-size:20px;background:#33444F;color:#fff;border:0;border-radius:12px;line-height:1.5\">今日解锁（家长陪同）</button>"
+                + "<button name=\"c\" value=\"close\" style=\"display:block;width:80%;margin:16px auto 0;padding:16px 12px;font-size:20px;background:#202A31;color:#E4E8EB;border:1px solid #53616B;border-radius:12px;line-height:1.5\">关闭儿童模式</button>"
                 + "</form>");
     }
 
