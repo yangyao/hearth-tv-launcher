@@ -22,11 +22,12 @@ final class KidModeSettings {
 
     static final String PREFS = "kids_mode";
 
-    final boolean enabled;
+    final boolean enabled, qrAnswer;
     final int grade, sessionMinutes, questions, dailyCapMinutes, gateDifficulty;
 
-    private KidModeSettings(boolean enabled, int grade, int sessionMinutes, int questions, int dailyCapMinutes, int gateDifficulty) {
+    private KidModeSettings(boolean enabled, boolean qrAnswer, int grade, int sessionMinutes, int questions, int dailyCapMinutes, int gateDifficulty) {
         this.enabled = enabled;
+        this.qrAnswer = qrAnswer;
         this.grade = grade;
         this.sessionMinutes = sessionMinutes;
         this.questions = questions;
@@ -40,6 +41,7 @@ final class KidModeSettings {
         SharedPreferences p = prefs(c);
         return new KidModeSettings(
                 p.getBoolean("enabled", false),
+                p.getBoolean("qr_answer", true),
                 clamp(p.getInt("grade", 2), 1, 6),
                 clamp(p.getInt("session_minutes", 10), 5, 30),
                 clamp(p.getInt("questions", 3), 1, 5),
@@ -47,9 +49,10 @@ final class KidModeSettings {
                 clamp(p.getInt("gate_difficulty", 2), 1, 3));
     }
 
-    static void save(Context c, boolean enabled, int grade, int sessionMinutes, int questions, int dailyCapMinutes, int gateDifficulty) {
+    static void save(Context c, boolean enabled, boolean qrAnswer, int grade, int sessionMinutes, int questions, int dailyCapMinutes, int gateDifficulty) {
         prefs(c).edit()
                 .putBoolean("enabled", enabled)
+                .putBoolean("qr_answer", qrAnswer)
                 .putInt("grade", grade)
                 .putInt("session_minutes", sessionMinutes)
                 .putInt("questions", questions)

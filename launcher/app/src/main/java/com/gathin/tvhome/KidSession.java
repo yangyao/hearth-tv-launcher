@@ -2,6 +2,7 @@ package com.gathin.tvhome;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -11,6 +12,7 @@ import android.widget.Toast;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
+import java.util.Random;
 
 /**
  * The kids-mode session: owns the {@link KidSessionPolicy}, persists it (kids_mode prefs, 60 s
@@ -19,6 +21,8 @@ import java.util.Locale;
  * {@link ParentGateActivity} at the next entry point. Timers come from two hosts, whichever is alive:
  * HomeKeyService (the accessibility helper, always bound) ticks every 60 s; MainActivity settles the
  * remaining tail when Home resumes. Both write the same lastUptime, so nothing double-counts.
+ * The parent gate (question, streak, cooldown) lives here too, so the TV keypad and the phone page
+ * ({@link KidGateServer}, opt-in) check the very same answer through the very same path.
  */
 public final class KidSession {
 
@@ -33,6 +37,9 @@ public final class KidSession {
     private boolean tickArmed;
     private boolean shieldUp;
     private long lastToastAt;
+    private KidQuiz.Question gateQuestion;
+    private KidGateServer gateServer;
+    private GateUi gateUi;
     private final Runnable ticker = this::tick;
 
     static synchronized KidSession get(Context c) {
@@ -200,6 +207,79 @@ public final class KidSession {
         shieldUp = up;
         if (up) KidOverlayController.dismiss();
         else react();
+    }
+
+    // ---- the parent gate: one question, one cooldown, two ways to answer -----------------------------
+
+    /** The outcome of one gate answer, from either input path (TV keypad or phone page). */
+    public enum GateResult { OK, WRONG, COOLDOWN }
+
+    /** The visible gate card listens while it is up; a phone answer re-renders it on the main thread. */
+    public interface GateUi { void onGateAnswered(GateResult result); }
+
+    /** The current gate question; made on first ask and rotated after every wrong answer. */
+    public synchronized KidQuiz.Question gateQuestion() {
+        if (gateQuestion == null)
+            gateQuestion = KidQuiz.gate(new Random(), KidModeSettings.load(app).gateDifficulty);
+        return gateQuestion;
+    }
+
+    public synchronized void rotateGateQuestion() {
+        gateQuestion = KidQuiz.gate(new Random(), KidModeSettings.load(app).gateDifficulty);
+    }
+
+    public long gateCooldownUntil() {
+        return KidModeSettings.prefs(app).getLong("gate_cooldown_until", 0);
+    }
+
+    /**
+     * One gate answer, whichever way it came in: right clears the gate, wrong earns the exponential
+     * cooldown on a fresh question, and during a cooldown nothing is even checked. The answer never
+     * leaves the TV — the phone only ever sends a guess.
+     */
+    public GateResult submitGateAnswer(String value) {
+        long now = System.currentTimeMillis();
+        if (now < gateCooldownUntil()) return GateResult.COOLDOWN;
+        if (value == null) return GateResult.WRONG;
+        int answer;
+        try {
+            answer = Integer.parseInt(value.trim());
+        } catch (NumberFormatException broken) {
+            return GateResult.WRONG;
+        }
+        if (answer != gateQuestion().answer) {
+            SharedPreferences p = KidModeSettings.prefs(app);
+            int streak = p.getInt("gate_streak", 0) + 1;
+            int seconds = ParentGatePolicy.cooldownSeconds(streak);
+            p.edit().putInt("gate_streak", streak)
+                    .putInt("gate_cooldown_sec", seconds)
+                    .putLong("gate_cooldown_until", now + seconds * 1000L).commit();
+            rotateGateQuestion();
+            notifyGateUi(GateResult.WRONG);
+            return GateResult.WRONG;
+        }
+        gateQuestion = null;
+        clearGate();
+        notifyGateUi(GateResult.OK);
+        return GateResult.OK;
+    }
+
+    /** The LAN server for phone answering (opt-in), alive only while a gate card is up. */
+    public synchronized KidGateServer ensureGateServer() {
+        if (gateServer == null) gateServer = new KidGateServer(this);
+        gateServer.start();
+        return gateServer;
+    }
+
+    public synchronized void stopGateServer() {
+        if (gateServer != null) gateServer.stop();
+    }
+
+    public void setGateUi(GateUi ui) { gateUi = ui; }
+
+    void notifyGateUi(GateResult result) {
+        GateUi ui = gateUi;
+        if (ui != null) handler.post(() -> ui.onGateAnswered(result));
     }
 
     // ---- internals -----------------------------------------------------------------------------------

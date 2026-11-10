@@ -97,6 +97,9 @@ public class KidModeSettingsActivity extends Activity {
         add(root, optionsRow(new String[]{"简单", "较难", "很难"}, cfg.gateDifficulty - 1, i -> save(null, null, null, null, null, i + 1)), 56);
         add(root, text("示例：" + KidQuiz.gate(new Random(), cfg.gateDifficulty).text + " = ?", 15), 40);
 
+        add(root, text("家长验证扫码作答（验证时电视显示二维码，用手机输入答案）", 16), 40);
+        add(root, optionsRow(new String[]{"开", "关"}, cfg.qrAnswer ? 0 : 1, i -> save(i == 0, null, null, null, null, null)), 56);
+
         add(root, text("悬浮窗授权（答题盖在视频上需要它）", 16), 40);
         if (KidOverlayController.canOverlay(this)) {
             add(root, text("已授权：到点直接弹出答题。", 15), 36);
@@ -106,9 +109,10 @@ public class KidModeSettingsActivity extends Activity {
         }
     }
 
-    private void save(Boolean enabled, Integer grade, Integer session, Integer questions, Integer cap, Integer difficulty) {
+    private void save(Boolean qrAnswer, Integer grade, Integer session, Integer questions, Integer cap, Integer difficulty) {
         KidModeSettings.save(this,
-                enabled != null ? enabled : kidsOn,
+                kidsOn,
+                qrAnswer != null ? qrAnswer : cfg.qrAnswer,
                 grade != null ? grade : cfg.grade,
                 session != null ? session : cfg.sessionMinutes,
                 questions != null ? questions : cfg.questions,

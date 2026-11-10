@@ -1,7 +1,6 @@
 package com.gathin.tvhome;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,6 +11,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -119,10 +119,10 @@ public final class KidOverlayController {
         private List<KidQuiz.Question> questions;
         private int qIndex;
         private final StringBuilder input = new StringBuilder();
-        private KidQuiz.Question gateQuestion;
-        private long cooldownUntil;
+        private KidGateServer gateServer;   // up only while a GATE card shows and the toggle allows
         private boolean passedAll;
-        private TextView answerLine, messageLine;
+        private TextView answerLine, messageLine, qrCountdown;
+        private ImageView qrView;
         private Runnable onConfirm;
 
         Shield(Context c, Host host) {
@@ -139,17 +139,16 @@ public final class KidOverlayController {
             KidModeSettings cfg = KidModeSettings.load(getContext());
             if (QUIZ.equals(mode) && questions == null)
                 questions = KidQuiz.generate(new Random(), cfg.grade, cfg.questions);
-            if (GATE.equals(mode) && gateQuestion == null) {
-                gateQuestion = KidQuiz.gate(new Random(), cfg.gateDifficulty);
-                cooldownUntil = prefs().getLong("gate_cooldown_until", 0);
+            if (GATE.equals(mode)) {
+                KidSession session = KidSession.get(getContext());
+                gateServer = cfg.qrAnswer ? session.ensureGateServer() : null;
+                session.setGateUi(this::onGateAnswered);   // the phone answers re-render this card
             }
             if (OPTIONS.equals(mode)) KidSession.get(getContext()).clearGate();
             input.setLength(0);
             passedAll = false;
             render();
         }
-
-        private SharedPreferences prefs() { return KidModeSettings.prefs(getContext()); }
 
         private void render() {
             removeAllViews();
@@ -174,8 +173,8 @@ public final class KidOverlayController {
             else if (GATE.equals(mode)) gateContent(panel);
             else if (passedAll) doneContent(panel);
             else quizContent(panel);
-            handler.removeCallbacks(cooldownTick);
-            if (GATE.equals(mode) && System.currentTimeMillis() < cooldownUntil) handler.postDelayed(cooldownTick, 500);
+            handler.removeCallbacks(gateTick);
+            if (GATE.equals(mode)) handler.postDelayed(gateTick, 500);   // cooldown line + QR validity
         }
 
         // ---- the four cards ----------------------------------------------------------------------
@@ -226,14 +225,45 @@ public final class KidOverlayController {
         }
 
         private void gateContent(LinearLayout panel) {
+            KidQuiz.Question q = KidSession.get(getContext()).gateQuestion();
             panel.addView(text(getContext(), "家长验证", 26, 0xFFE4E8EB, dp(4)));
             panel.addView(text(getContext(), "请家长计算，孩子不用试啦", 15, 0xFF8D9BA7, dp(2)));
-            panel.addView(text(getContext(), (gateQuestion == null ? "" : gateQuestion.text) + " = ?", 38, 0xFFFFFFFF, dp(16)));
+
+            LinearLayout left = new LinearLayout(getContext());
+            left.setOrientation(LinearLayout.VERTICAL);
+            left.setGravity(Gravity.CENTER_HORIZONTAL);
+            left.addView(text(getContext(), q.text + " = ?", 38, 0xFFFFFFFF, dp(16)));
             answerLine = text(getContext(), "＝ " + input, 30, 0xFF9AD6A8, dp(6));
-            panel.addView(answerLine);
+            left.addView(answerLine);
             messageLine = text(getContext(), "", 15, 0xFF8D9BA7, dp(2));
-            panel.addView(messageLine);
-            panel.addView(keypad(this::submitGate));
+            left.addView(messageLine);
+            left.addView(keypad(this::submitGate));
+
+            boolean qr = gateServer != null && gateServer.running() && gateServer.url() != null;
+            if (qr) {
+                // The phone path: scan, answer on the phone's own keyboard; the TV checks, always.
+                LinearLayout side = new LinearLayout(getContext());
+                side.setOrientation(LinearLayout.VERTICAL);
+                side.setGravity(Gravity.CENTER_HORIZONTAL);
+                side.setPadding(dp(30), 0, 0, 0);
+                qrView = new ImageView(getContext());
+                qrView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                qrView.setPadding(dp(6), dp(6), dp(6), dp(6));
+                qrView.setBackground(rounded(0xFFFFFFFF, dp(8)));
+                rebuildQr();
+                side.addView(qrView, new LinearLayout.LayoutParams(dp(150), dp(150)));
+                side.addView(text(getContext(), "手机扫码作答", 15, 0xFF8D9BA7, dp(10)));
+                qrCountdown = text(getContext(), "", 13, 0xFF53616B, dp(0));
+                side.addView(qrCountdown);
+                LinearLayout cols = new LinearLayout(getContext());
+                cols.setOrientation(LinearLayout.HORIZONTAL);
+                cols.setGravity(Gravity.CENTER_VERTICAL);
+                cols.addView(left);
+                cols.addView(side);
+                panel.addView(cols);
+            } else {
+                panel.addView(left);
+            }
         }
 
         private void optionsContent(LinearLayout panel) {
@@ -254,41 +284,60 @@ public final class KidOverlayController {
             panel.addView(entry);
         }
 
+        /** The TV keypad's confirm: the session checks it, the listener re-renders with the result. */
         private void submitGate() {
-            if (gateQuestion == null || System.currentTimeMillis() < cooldownUntil) return;
             if (input.length() == 0) return;
-            if (Integer.parseInt(input.toString()) == gateQuestion.answer) {
-                KidSession.get(getContext()).clearGate();
-                cooldownUntil = 0;
-                swap(OPTIONS);
-                return;
-            }
-            // Wrong: exponential backoff, a fresh question, never the answer.
-            SharedPreferences p = prefs();
-            int streak = p.getInt("gate_streak", 0) + 1;
-            int seconds = ParentGatePolicy.cooldownSeconds(streak);
-            cooldownUntil = System.currentTimeMillis() + seconds * 1000L;
-            p.edit().putInt("gate_streak", streak)
-                    .putInt("gate_cooldown_sec", seconds)
-                    .putLong("gate_cooldown_until", cooldownUntil).commit();
-            input.setLength(0);
-            gateQuestion = KidQuiz.gate(new Random(), KidModeSettings.load(getContext()).gateDifficulty);
-            render();
+            KidSession.get(getContext()).submitGateAnswer(input.toString());
         }
 
-        private final Runnable cooldownTick = new Runnable() {
+        /** A gate answer landed (TV keypad or phone): OK flips to the options, else a fresh question. */
+        private void onGateAnswered(KidSession.GateResult result) {
+            if (result == KidSession.GateResult.OK) {
+                swap(OPTIONS);
+            } else if (result == KidSession.GateResult.WRONG) {
+                input.setLength(0);
+                render();
+            }
+            // COOLDOWN: the tick below is already counting the wait down.
+        }
+
+        /** The gate's resident ½ s tick: the cooldown line, the QR's validity and its countdown. */
+        private final Runnable gateTick = new Runnable() {
             @Override public void run() {
-                if (messageLine != null && cooldownUntil > System.currentTimeMillis()) {
-                    long left = (cooldownUntil - System.currentTimeMillis() + 999) / 1000;
-                    long m = left / 60, s = left % 60;
-                    messageLine.setText(m > 0
-                            ? String.format(Locale.US, "答案不正确；请等 %d 分 %02d 秒后再试", m, s)
-                            : String.format(Locale.US, "答案不正确；请等 %d 秒后再试", s));
-                    messageLine.setTextColor(0xFFE57373);
-                    handler.postDelayed(this, 500);
+                if (!GATE.equals(mode)) return;
+                long cd = KidSession.get(getContext()).gateCooldownUntil() - System.currentTimeMillis();
+                if (messageLine != null) {
+                    if (cd > 0) {
+                        long left = (cd + 999) / 1000;
+                        messageLine.setText(left >= 60
+                                ? String.format(Locale.US, "答案不正确；请等 %d 分 %02d 秒后再试", left / 60, left % 60)
+                                : String.format(Locale.US, "答案不正确；请等 %d 秒后再试", left));
+                        messageLine.setTextColor(0xFFE57373);
+                    } else if (messageLine.length() > 0) {
+                        messageLine.setText("");   // the wait is over, back to a plain card
+                    }
                 }
+                if (gateServer != null && gateServer.running()) {
+                    long left = gateServer.tokenExpiresIn();
+                    if (qrCountdown != null)
+                        qrCountdown.setText(left > 0
+                                ? String.format(Locale.US, "二维码 %d:%02d 内有效，过期自动刷新", left / 60000, left / 1000 % 60)
+                                : "正在刷新二维码…");
+                    if (left <= 0) {
+                        gateServer.rotateToken();
+                        rebuildQr();
+                    }
+                }
+                handler.postDelayed(this, 500);
             }
         };
+
+        private void rebuildQr() {
+            if (gateServer == null || qrView == null) return;
+            String url = gateServer.url();
+            if (url == null) return;
+            qrView.setImageBitmap(KidGateServer.qrBitmap(url, dp(150)));
+        }
 
         // ---- keys ---------------------------------------------------------------------------------
 
@@ -326,6 +375,9 @@ public final class KidOverlayController {
         @Override
         protected void onDetachedFromWindow() {
             handler.removeCallbacksAndMessages(null);
+            KidSession session = KidSession.get(getContext());
+            session.setGateUi(null);
+            session.stopGateServer();   // the LAN port lives exactly as long as the card does
             super.onDetachedFromWindow();
         }
 
